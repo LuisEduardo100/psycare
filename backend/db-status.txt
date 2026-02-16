@@ -1,0 +1,7 @@
+--- DATABASE USERS ---
+Email: [admin@psycare.com] | Role: [ADMIN] | Name: [Admin User]
+Email: [doctor@psycare.com] | Role: [DOCTOR] | Name: [Dr. House]
+Email: [patient@psycare.com] | Role: [PATIENT] | Name: [Patient Zero]
+--- END OF LIST ---
+john@gmail.com NOT FOUND
+Found admin@psycare.com: Role=ADMIN

@@ -1,0 +1,430 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  SECRETARY
+  ADMIN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  SEPARATED
+  UNION
+}
+
+enum ConsultationStatus {
+  DRAFT
+  FINALIZED
+  CANCELLED
+}
+
+enum DocumentType {
+  LAB_Exam
+  IMAGE_Exam
+  PSYCHOMETRIC
+  OTHER
+}
+
+// User & Auth
+model User {
+  id                   String        @id @default(uuid())
+  email                String        @unique
+  password_hash        String
+  role                 Role          @default(PATIENT)
+  full_name            String
+  phone                String?
+  profile_picture      String?       // URL or Base64
+  crm                  String?       // Doctors only
+  uf                   String?       // Doctors only
+  street               String?
+  number               String?
+  complement           String?
+  neighborhood         String?
+  city                 String?
+  state                String?
+  zip_code             String?
+  two_factor_enabled   Boolean       @default(false)
+  two_factor_secret    String?
+  recovery_codes       String[]      // Encrypted
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @updatedAt
+  last_login           DateTime?
+  invite_token         String?       @unique
+  invite_expires       DateTime?
+  reset_token          String?       @unique
+  reset_expires        DateTime?
+  
+  // Relations
+  patient_profile      PatientProfile?
+  audit_logs           AuditLog[]
+  created_consultations Consultation[] @relation("DoctorConsultations")
+  patients             PatientProfile[] @relation("DoctorPatients")
+  
+  @@map("users")
+}
+
+// Patient Profile
+model PatientProfile {
+  id                   String        @id @default(uuid())
+  user_id              String        @unique
+  user                 User          @relation(fields: [user_id], references: [id])
+  
+  // Link to Primary Doctor (New Requirement)
+  doctor_id            String?
+  doctor               User?         @relation("DoctorPatients", fields: [doctor_id], references: [id])
+
+  cpf                  String        @unique
+  birth_date           DateTime
+  gender               Gender
+  marital_status       MaritalStatus
+  profession           String?
+  emergency_contact    String?       // Encrypted
+  emergency_phone      String?       // Encrypted
+  
+  weight               Float?        // Check > 0
+  height               Float?        // Check > 0
+  main_complaint       String?
+  diagnosis_history    String?       // Encrypted JSON
+  
+  deleted_at           DateTime?
+  deleted_by           String?
+  
+  // Relations
+  daily_logs           DailyLog[]
+  consultations        Consultation[]
+  prescriptions        Prescription[]
+  formal_prescriptions FormalPrescription[]
+  clinical_documents   ClinicalDocument[]
+  therapeutic_plans    TherapeuticPlan[]
+  alerts               Alert[]
+  consent_logs         ConsentLog[]
+  notifications_log    NotificationLog[]
+  
+  @@map("patient_profiles")
+}
+
+// Daily Logs (LCM Model - Life Chart Method)
+model DailyLog {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  date                 DateTime      @db.Date
+  created_at           DateTime      @default(now())
+  
+  // Sleep (Biological Rhythm)
+  sleep_bedtime        DateTime?
+  sleep_onset_time     DateTime?
+  sleep_wake_time      DateTime?
+  sleep_quality        Int?          // 1-5
+  sleep_awakenings     Int?          @default(0)
+  sleep_difficulty     Boolean?      @default(false)
+  sleep_hours          Float?        // Calculated
+
+  // Mood (LCM: Polarity & Intensity)
+  // Polarity: -3 (Depression Severe) to +3 (Mania Severe), 0 = Euthymia
+  mood_rating          Int?          // 1-5 (Emoji support)
+  mood_level           Int?          // -3 to +3
+  anxiety_level        Int?          // 0-3 (None, Mild, Moderate, Severe)
+  irritability_level   Int?          // 0-3 (None, Mild, Moderate, Severe)
+  
+  mood_tags            String[]      // JSON ("agitated", "sad", "euphoric")
+  symptoms             String[]      // JSON (physical symptoms)
+  
+  // Women's Health
+  menstruation_stage   String?       // "flow", "follicular", "luteal", etc.
+
+  // Content
+  notes                String?       // Encrypted (Therapeutic writing)
+  suicidal_ideation_flag Boolean?    @default(false)
+  risk_flag            Boolean?      @default(false)
+  
+  // Activity / Events
+  exercise_minutes     Int?
+  exercise_type        String?
+  exercise_intensity   String?       // Low, Medium, High
+  life_event_description String?     // "Fight with partner", "Promotion"
+  life_event_impact    Int?          // -1 (Negative), 0 (Neutral), 1 (Positive)
+  
+  @@unique([patient_id, date])
+  @@index([patient_id, date])
+  @@map("daily_logs") 
+}
+
+// Clinical Consultations (PEP)
+model Consultation {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  doctor_id            String
+  doctor               User          @relation("DoctorConsultations", fields: [doctor_id], references: [id])
+  
+  date_time            DateTime
+  duration_minutes     Int
+  modality             String        // Presencial, Telemedicina
+  status               ConsultationStatus @default(DRAFT)
+  
+  anamnesis            String?       // Encrypted, Full-text search
+  diagnostic_hypothesis String?
+  treatment_plan       String?
+  
+  icd10_codes          String[]      // Array of codes
+  
+  signature_hash       String?       // Digital signature
+  signed_at            DateTime?
+  
+  cancelled_reason     String?
+  cancelled_at         DateTime?
+  
+  // Versioning
+  version              Int           @default(1)
+  parent_id            String?
+  parent               Consultation? @relation("ConsultationHistory", fields: [parent_id], references: [id])
+  children             Consultation[] @relation("ConsultationHistory")
+  
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @updatedAt
+  deleted_at           DateTime?
+  deleted_by           String?
+  
+  formal_prescriptions FormalPrescription[]
+  evolutions           ClinicalEvolution[]
+  
+  @@map("consultations")
+}
+
+// Clinical Evolutions
+model ClinicalEvolution {
+  id                   String        @id @default(uuid())
+  consultation_id      String?
+  consultation         Consultation? @relation(fields: [consultation_id], references: [id])
+  patient_id           String // Redundant but useful for queries without joining consultation
+  
+  type                 String        // NOTE, PHONE_CALL, CRISIS, etc.
+  content              String        // Encrypted
+  is_important_marker  Boolean       @default(false)
+  
+  created_at           DateTime      @default(now())
+  created_by           String        // Doctor ID
+  
+  @@map("clinical_evolutions")
+}
+
+// Medications (Reference Table)
+model Medication {
+  id                   String        @id @default(uuid())
+  name                 String
+  active_ingredient    String
+  concentration        String?
+  form                 String?       // Comprimido, Xarope, etc.
+  interaction_tags     String[]      // JSON tags for interaction checking
+  indication_cids      String[]      // JSON CIDs
+  is_controlled        Boolean       @default(false)
+  
+  prescriptions        Prescription[]
+  formal_items         FormalPrescriptionItem[]
+  
+  @@map("medications")
+}
+
+// Active Prescriptions (Patient View)
+model Prescription {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  medication_id        String
+  medication           Medication    @relation(fields: [medication_id], references: [id])
+  
+  dosage               String
+  frequency            String
+  start_date           DateTime
+  end_date             DateTime?
+  is_active            Boolean       @default(true)
+  
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @updatedAt
+  
+  @@map("prescriptions")
+}
+
+// Formal Prescriptions (Legal Document)
+model FormalPrescription {
+  id                   String        @id @default(uuid())
+  consultation_id      String
+  consultation         Consultation  @relation(fields: [consultation_id], references: [id])
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  
+  type                 String        // SIMPLES, CONTROLada, ANTIMICROBIANA
+  is_valid             Boolean       @default(true)
+  valid_until          DateTime
+  revoked_at           DateTime?
+  revoked_reason       String?
+  
+  items                FormalPrescriptionItem[]
+  
+  signature_hash       String?
+  signed_at            DateTime?
+  
+  created_at           DateTime      @default(now())
+  deleted_at           DateTime?
+  
+  @@map("formal_prescriptions")
+}
+
+model FormalPrescriptionItem {
+  id                    String             @id @default(uuid())
+  formal_prescription_id String
+  prescription          FormalPrescription @relation(fields: [formal_prescription_id], references: [id])
+  medication_id         String
+  medication            Medication         @relation(fields: [medication_id], references: [id])
+  
+  dosage                String
+  quantity              String             // "1 caixa", "30 comprimidos"
+  instructions          String?
+  
+  @@map("formal_prescription_items")
+}
+
+// Therapeutic Plans
+model TherapeuticPlan {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  
+  short_term_goals     String?       // Encrypted JSON
+  medium_term_goals    String?
+  long_term_goals      String?
+  
+  strategies           String?
+  review_date          DateTime?
+  
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @updatedAt
+  created_by           String        // Doctor ID
+  deleted_at           DateTime?
+  
+  @@map("therapeutic_plans")
+}
+
+// Alerts (Sentinel System)
+model Alert {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  
+  severity             String        // LOW, MEDIUM, HIGH
+  trigger_source       String        // MOOD_DROP, SUICIDAL_IDEATION, MEDICATION_INTERACTION
+  status               String        // PENDING, VIEWED, CONTACTED, RESOLVED, FALSE_POSITIVE
+  
+  resolution_notes     String?
+  contact_method       String?       // PHONE, WHATSAPP, etc.
+  
+  created_at           DateTime      @default(now())
+  updated_at           DateTime      @updatedAt
+  
+  @@map("alerts")
+}
+
+// Documents
+model ClinicalDocument {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  
+  type                 DocumentType
+  title                String
+  file_url             String
+  file_hash            String        // SHA-256 integrity
+  extracted_text       String?       // OCR content, Encrypted, Full-text search
+  metadata             String?       // JSON
+  
+  exam_date            DateTime?
+  laboratory           String?
+  
+  created_at           DateTime      @default(now())
+  deleted_at           DateTime?
+  
+  @@map("clinical_documents")
+}
+
+// Audit Logs (WORM)
+model AuditLog {
+  id                   String        @id @default(uuid())
+  user_id              String?
+  user                 User?         @relation(fields: [user_id], references: [id])
+  
+  action               String        // VIEW, CREATE, UPDATE, DELETE, EXPORT
+  resource             String        // PATIENT, CONSULTATION, etc.
+  resource_id          String?
+  
+  ip_address           String
+  user_agent           String
+  success              Boolean       @default(true)
+  details              String?       // JSON
+  
+  timestamp            DateTime      @default(now())
+  
+  @@index([timestamp])
+  @@index([user_id])
+  @@map("audit_logs")
+}
+
+// Consent Logs (LGPD)
+model ConsentLog {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  
+  term_version         String
+  agreed_at            DateTime      @default(now())
+  ip_address           String
+  user_agent           String
+  
+  revoked_at           DateTime?
+  
+  @@map("consent_logs")
+}
+
+// ICD-10 Codes
+model ICD10Code {
+  code                 String        @id
+  description          String
+  chapter              String?
+  
+  @@map("icd10_codes")
+}
+
+// Notifications
+model NotificationLog {
+  id                   String        @id @default(uuid())
+  patient_id           String
+  patient              PatientProfile @relation(fields: [patient_id], references: [id])
+  
+  channel              String        // WHATSAPP, EMAIL, SMS
+  type                 String        // REMINDER_SLEEP, APPOINTMENT_CONFIRMATION
+  status               String        // PENDING, SENT, FAILED
+  content              String?
+  sent_at              DateTime?
+  error_message        String?
+  
+  created_at           DateTime      @default(now())
+  
+  @@map("notifications_log")
+}
