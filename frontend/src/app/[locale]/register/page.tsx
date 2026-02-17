@@ -25,14 +25,18 @@ import { SegmentedControl } from "@/components/ui/segmented-control"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Link } from "@/i18n/routing"
 import { useTranslations } from "next-intl"
+import { formatCPF, formatPhone } from "@/lib/masks"
 
 const formSchema = z.object({
     fullName: z.string().min(2),
     email: z.string().email(),
     password: z.string().min(6),
-    invitationCode: z.string().length(6).optional().or(z.literal("")),
+    invitationCode: z.string().optional(),
     crm: z.string().optional(),
     uf: z.string().optional(),
+    cpf: z.string().optional(),
+    phone: z.string().optional(),
+    rqe: z.string().optional(),
 })
 
 export default function RegisterPage() {
@@ -51,6 +55,11 @@ export default function RegisterPage() {
             email: "",
             password: "",
             invitationCode: "",
+            crm: "",
+            uf: "",
+            cpf: "",
+            phone: "",
+            rqe: "",
         },
     })
 
@@ -65,6 +74,9 @@ export default function RegisterPage() {
                 role: selectedRole,
                 crm: values.crm,
                 uf: values.uf,
+                cpf: values.cpf,
+                phone: values.phone,
+                rqe: values.rqe,
                 ...(values.invitationCode ? { invitationCode: values.invitationCode } : {}),
             }
             const response = await api.post("/auth/register", payload)
@@ -189,33 +201,99 @@ export default function RegisterPage() {
                                 )}
                             />
 
+                            <FormField
+                                control={form.control}
+                                name="phone"
+                                render={({ field }: { field: any }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider ml-1">
+                                            Celular
+                                        </FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                placeholder="(00) 00000-0000"
+                                                {...field}
+                                                onChange={(e) => {
+                                                    field.onChange(formatPhone(e.target.value))
+                                                }}
+                                                maxLength={15}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
                             {selectedRole === "DOCTOR" && (
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <FormField
+                                            control={form.control}
+                                            name="crm"
+                                            render={({ field }: { field: any }) => (
+                                                <FormItem>
+                                                    <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider ml-1">
+                                                        CRM
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input placeholder="000000" {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <FormField
+                                            control={form.control}
+                                            name="uf"
+                                            render={({ field }: { field: any }) => (
+                                                <FormItem>
+                                                    <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider ml-1">
+                                                        UF
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input placeholder="SP" maxLength={2} {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <FormField
+                                            control={form.control}
+                                            name="cpf"
+                                            render={({ field }: { field: any }) => (
+                                                <FormItem>
+                                                    <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider ml-1">
+                                                        CPF
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder="000.000.000-00"
+                                                            {...field}
+                                                            onChange={(e) => {
+                                                                field.onChange(formatCPF(e.target.value))
+                                                            }}
+                                                            maxLength={14}
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
                                     <FormField
                                         control={form.control}
-                                        name="crm"
+                                        name="rqe"
                                         render={({ field }: { field: any }) => (
                                             <FormItem>
                                                 <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider ml-1">
-                                                    CRM
+                                                    RQE (Opcional)
                                                 </FormLabel>
                                                 <FormControl>
-                                                    <Input placeholder="000000" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="uf"
-                                        render={({ field }: { field: any }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider ml-1">
-                                                    UF
-                                                </FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="SP" {...field} />
+                                                    <Input placeholder="Registro de Especialista" {...field} />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
@@ -223,32 +301,6 @@ export default function RegisterPage() {
                                     />
                                 </div>
                             )}
-                            <FormField
-                                control={form.control}
-                                name="invitationCode"
-                                render={({ field }: { field: any }) => (
-                                    <FormItem>
-                                        <div className="bg-teal-50 border border-teal-100 rounded-2xl p-4">
-                                            <FormLabel className="text-xs font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                                                <Link2 className="h-4 w-4" />
-                                                {t("invitationCodeLabel")}
-                                            </FormLabel>
-                                            <p className="text-xs text-teal-600/80 mb-3 leading-snug">
-                                                {t("invitationCodeDescription")}
-                                            </p>
-                                            <FormControl>
-                                                <Input
-                                                    className="text-center tracking-[0.2em] py-3 bg-background border-teal-200 rounded-xl text-lg font-bold text-teal-900 placeholder:text-teal-200"
-                                                    maxLength={6}
-                                                    placeholder="------"
-                                                    {...field}
-                                                />
-                                            </FormControl>
-                                        </div>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
 
                             {error && (
                                 <Alert variant="destructive">

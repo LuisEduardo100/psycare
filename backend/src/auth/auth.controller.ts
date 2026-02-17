@@ -42,8 +42,14 @@ export class AuthController {
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @Get('profile')
-    getProfile(@Request() req) {
-        return req.user;
+    async getProfile(@Request() req) {
+        const userId = req.user.userId || req.user.sub;
+        const user = await this.usersService.findById(userId);
+        if (!user) {
+            throw new UnauthorizedException('User not found');
+        }
+        const { password_hash, ...rest } = user;
+        return rest;
     }
 
     @UseGuards(JwtAuthGuard)
@@ -108,5 +114,18 @@ export class AuthController {
     @Post('reset-password')
     async resetPassword(@Body() body: { token: string; password: string }) {
         return this.usersService.resetPasswordWithToken(body.token, body.password);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Post('email/request-change')
+    async requestEmailChange(@Request() req, @Body() body: { newEmail: string }) {
+        const userId = req.user.userId || req.user.sub;
+        return this.usersService.requestEmailChange(userId, body.newEmail);
+    }
+
+    @Post('email/confirm')
+    async confirmEmailChange(@Body() body: { token: string }) {
+        return this.usersService.confirmEmailChange(body.token);
     }
 }

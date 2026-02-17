@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as speakeasy from 'speakeasy';
 import { User } from '@prisma/client';
+import { validateCPF } from '../common/utils/cpf.validator';
 
 @Injectable()
 export class AuthService {
@@ -76,11 +77,30 @@ export class AuthService {
         };
     }
 
+
     async register(user: any) {
         const existingUser = await this.usersService.findOne(user.email);
         if (existingUser) {
             throw new UnauthorizedException('User already exists');
         }
+
+        if (user.role === 'DOCTOR') {
+            if (!user.crm || !user.uf) {
+                throw new UnauthorizedException('CRM and UF are required for doctors');
+            }
+            if (!user.cpf) {
+                throw new UnauthorizedException('CPF is required for doctors');
+            }
+            if (!validateCPF(user.cpf)) {
+                throw new UnauthorizedException('Invalid CPF');
+            }
+        }
+
+        // Remove formatting from CPF before saving
+        if (user.cpf) {
+            user.cpf = user.cpf.replace(/[^\d]+/g, '');
+        }
+
         const newUser = await this.usersService.create(user);
         return this.login(newUser);
     }

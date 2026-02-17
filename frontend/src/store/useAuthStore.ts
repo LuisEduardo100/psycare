@@ -12,6 +12,16 @@ interface User {
     profilePicture?: string;
     hasAvatar?: boolean;
     isTwoFactorAuthenticated: boolean;
+
+    // Doctor Fields
+    crm?: string;
+    uf?: string;
+    cpf?: string;
+    rqe?: string;
+    clinic_address?: any;
+    certificate_serial?: string;
+    is_verified?: boolean;
+    onboarding_status?: number;
 }
 
 interface AuthState {
@@ -43,7 +53,6 @@ export const useAuthStore = create<AuthState>()(
                         role: decoded.role,
                         fullName: decoded.fullName || decoded.full_name,
                         phone: decoded.phone,
-                        // profilePicture: decoded.profile_picture, // Removed from JWT
                         isTwoFactorAuthenticated: decoded.isTwoFactorAuthenticated
                     };
                     set({ accessToken: token, user, isAuthenticated: true });
@@ -69,12 +78,22 @@ export const useAuthStore = create<AuthState>()(
                                 ...state.user,
                                 fullName: userData.full_name,
                                 phone: userData.phone,
-                                // profilePicture: userData.profile_picture // Removed
-                                hasAvatar: userData.hasAvatar
+                                hasAvatar: userData.hasAvatar,
+
+                                // Map new fields
+                                crm: userData.crm,
+                                uf: userData.uf,
+                                cpf: userData.cpf,
+                                rqe: userData.rqe,
+                                clinic_address: userData.clinic_address,
+                                certificate_serial: userData.certificate_serial,
+                                is_verified: userData.is_verified,
+                                onboarding_status: userData.onboarding_status,
                             } : null
                         }));
                     }
-                } catch (error) {
+                } catch (error: any) {
+                    // Prevent loop: if 401, just error out (interceptor handles logout)
                     console.error("Error fetching user profile", error);
                 }
             },

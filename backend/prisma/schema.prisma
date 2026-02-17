@@ -60,6 +60,15 @@ model User {
   city                 String?
   state                String?
   zip_code             String?
+  
+  // Doctor/Profile Specifics
+  cpf                  String?       @unique
+  rqe                  String?       // Registro de Qualificação de Especialista
+  is_verified          Boolean       @default(false)
+  onboarding_status    Int           @default(0) // 0-100%
+  clinic_address       Json?         // { street, number, complement, neighborhood, city, state, zip_code }
+  certificate_serial   String?       // ICP-Brasil Certificate Serial
+  validation_level     String?       // 'BASIC', 'GOV_API', 'CERTIFICATE'
   two_factor_enabled   Boolean       @default(false)
   two_factor_secret    String?
   recovery_codes       String[]      // Encrypted
@@ -70,6 +79,11 @@ model User {
   invite_expires       DateTime?
   reset_token          String?       @unique
   reset_expires        DateTime?
+
+  // Email Change
+  new_email            String?
+  email_change_token   String?       @unique
+  email_change_expires DateTime?
   
   // Relations
   patient_profile      PatientProfile?

@@ -679,4 +679,54 @@ export class UsersService {
             }
         });
     }
+
+    async requestEmailChange(userId: string, newEmail: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        // Check if email is already taken by another user
+        const existingUser = await this.prisma.user.findUnique({ where: { email: newEmail } });
+        if (existingUser) throw new ConflictException('Email already in use');
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expires = new Date();
+        expires.setHours(expires.getHours() + 24); // 24h expiry
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                new_email: newEmail,
+                email_change_token: token,
+                email_change_expires: expires
+            }
+        });
+
+        await this.mailService.sendEmailChangeConfirmation(newEmail, token, user.full_name);
+        return { message: 'Confirmation email sent' };
+    }
+
+    async confirmEmailChange(token: string) {
+        const user = await this.prisma.user.findFirst({
+            where: {
+                email_change_token: token,
+                email_change_expires: { gt: new Date() }
+            }
+        });
+
+        if (!user || !user.new_email) {
+            throw new BadRequestException('Invalid or expired token');
+        }
+
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+                email: user.new_email,
+                new_email: null,
+                email_change_token: null,
+                email_change_expires: null
+            }
+        });
+
+        return { message: 'Email updated successfully' };
+    }
 }

@@ -11,6 +11,8 @@ import { NewPatientModal } from "@/components/dashboard/new-patient-modal"
 import { InvitePatientModal } from "@/components/dashboard/invite-patient-modal"
 import { Button } from "@/components/ui/button"
 
+import { OnboardingWidget } from "@/components/dashboard/onboarding-widget"
+
 export default function DashboardPage() {
     const { user, isAuthenticated } = useAuthStore()
     const router = useRouter()
@@ -38,6 +40,8 @@ export default function DashboardPage() {
     return (
         <div className="space-y-6 lg:space-y-10">
             <Header />
+
+            <OnboardingWidget />
 
             {/* Top Metrics Bar */}
             <StatsCards />

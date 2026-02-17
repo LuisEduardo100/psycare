@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input"
 import { useState, useEffect } from "react"
 import api from "@/lib/api"
 import { useTranslations } from "next-intl"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { UserAvatar } from "./user-avatar"
 import { useAuthStore } from "@/store/useAuthStore"
-import { LogOut, Upload } from "lucide-react"
+import { LogOut, Upload, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react"
 import { useRouter } from "@/i18n/routing"
 import { toast } from "sonner"
+import { formatPhone } from "@/lib/masks"
+import { OtpModal } from "./otp-modal"
 
 const passwordSchema = z.object({
     old_password: z.string().min(1, "Obrigatório"),
@@ -25,26 +27,13 @@ const passwordSchema = z.object({
     path: ["confirm_password"],
 })
 
-// Utility for phone masking
-const formatPhone = (value: string) => {
-    if (!value) return ""
-    value = value.replace(/\D/g, "")
-    value = value.substring(0, 11)
-    if (value.length > 10) {
-        return value.replace(/^(\d\d)(\d{5})(\d{4}).*/, "($1) $2-$3")
-    } else if (value.length > 5) {
-        return value.replace(/^(\d\d)(\d{4})(\d{0,4}).*/, "($1) $2-$3")
-    } else if (value.length > 2) {
-        return value.replace(/^(\d\d)(\d{0,5}).*/, "($1) $2")
-    } else {
-        return value.replace(/^(\d*)/, "($1")
-    }
-}
-
 const profileSchema = z.object({
     full_name: z.string().min(3, "Mínimo 3 caracteres"),
+    email: z.string().email("Email inválido"),
     phone: z.string().optional(),
-    profile_picture: z.string().optional(),
+    crm: z.string().optional(),
+    uf: z.string().optional(),
+    rqe: z.string().optional(),
     street: z.string().optional(),
     number: z.string().optional(),
     complement: z.string().optional(),
@@ -55,12 +44,13 @@ const profileSchema = z.object({
 })
 
 export function SettingsForm() {
-    const t = useTranslations("Settings")
-    const { user, login, logout, updateUser, refreshAvatar } = useAuthStore()
+    const { user, logout, updateUser, refreshAvatar } = useAuthStore()
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+    const [otpOpen, setOtpOpen] = useState(false)
+    const [phoneVerified, setPhoneVerified] = useState(false) // In real app, check user.isPhoneVerified
 
     const passwordForm = useForm<z.infer<typeof passwordSchema>>({
         resolver: zodResolver(passwordSchema),
@@ -75,8 +65,11 @@ export function SettingsForm() {
         resolver: zodResolver(profileSchema),
         defaultValues: {
             full_name: user?.fullName || "",
+            email: user?.email || "",
             phone: user?.phone || "",
-            profile_picture: user?.profilePicture || "",
+            crm: (user as any)?.crm || "",
+            uf: (user as any)?.uf || "",
+            rqe: (user as any)?.rqe || "",
             street: (user as any)?.street || "",
             number: (user as any)?.number || "",
             complement: (user as any)?.complement || "",
@@ -87,54 +80,56 @@ export function SettingsForm() {
         },
     })
 
-    // Update form when user data changes (including new fields)
     useEffect(() => {
         if (user) {
             profileForm.reset({
-                full_name: user.fullName,
+                full_name: user.fullName || "",
+                email: user.email || "",
                 phone: user.phone || "",
-                profile_picture: user.profilePicture || "",
-                street: (user as any).street || "",
-                number: (user as any).number || "",
-                complement: (user as any).complement || "",
-                neighborhood: (user as any).neighborhood || "",
-                city: (user as any).city || "",
-                state: (user as any).state || "",
-                zip_code: (user as any).zip_code || "",
+                crm: (user as any).crm || "",
+                uf: (user as any).uf || "",
+                rqe: (user as any).rqe || "",
+                street: (user as any).street || ((user as any).clinic_address?.street) || "",
+                number: (user as any).number || ((user as any).clinic_address?.number) || "",
+                complement: (user as any).complement || ((user as any).clinic_address?.complement) || "",
+                neighborhood: (user as any).neighborhood || ((user as any).clinic_address?.neighborhood) || "",
+                city: (user as any).city || ((user as any).clinic_address?.city) || "",
+                state: (user as any).state || ((user as any).clinic_address?.state) || "",
+                zip_code: (user as any).zip_code || ((user as any).clinic_address?.zip_code) || "",
             })
             setPreviewUrl(null)
         }
     }, [user, profileForm])
 
-    // ... (onPasswordSubmit)
-
     async function onProfileSubmit(values: z.infer<typeof profileSchema>) {
         setLoading(true)
         try {
-            // 1. Upload Avatar if selected
-            let avatarFilename = values.profile_picture;
-
-            if (selectedFile) {
-                const formData = new FormData();
-                formData.append('file', selectedFile);
-
+            // Check for email change
+            if (values.email !== user?.email) {
                 try {
-                    const uploadRes = await api.post('/users/me/avatar', formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-                    if (uploadRes.data.filename) {
-                        avatarFilename = uploadRes.data.filename;
-                    }
-                } catch (uploadError) {
-                    console.error("Upload failed", uploadError);
-                    toast.error("Erro ao enviar foto via upload. Tentando salvar dados de texto.");
+                    await api.post('/auth/email/request-change', { newEmail: values.email });
+                    toast.info(`Link de confirmação enviado para ${values.email}. Verifique sua caixa de entrada.`);
+                } catch (emailError: any) {
+                    toast.error(emailError.response?.data?.message || "Erro ao solicitar alteração de email.");
+                    // Don't halt other updates, or halt? Maybe halt to user understands.
+                    // But if fetching avatar worked... let's continue but warn.
                 }
             }
 
+            // 1. Upload Avatar if selected
+            if (selectedFile) {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                await api.post('/users/me/avatar', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            }
+
             // 2. Update Text Data
-            await api.patch('/users/me', {
+            const payload: any = {
                 full_name: values.full_name,
                 phone: values.phone,
+                // Combine address into flat fields for User model update
                 street: values.street,
                 number: values.number,
                 complement: values.complement,
@@ -142,15 +137,31 @@ export function SettingsForm() {
                 city: values.city,
                 state: values.state,
                 zip_code: values.zip_code,
-            })
+            }
 
-            // Update local user store
+            // Only send doctor fields if doctor
+            if (user?.role === 'DOCTOR') {
+                payload.crm = values.crm;
+                payload.uf = values.uf;
+                payload.rqe = values.rqe;
+                payload.clinic_address = {
+                    street: values.street,
+                    number: values.number,
+                    complement: values.complement,
+                    neighborhood: values.neighborhood,
+                    city: values.city,
+                    state: values.state,
+                    zip_code: values.zip_code
+                }
+            }
+
+            await api.patch('/users/me', payload)
+
             if (updateUser) {
                 updateUser({
                     fullName: values.full_name,
                     phone: values.phone,
-                    // We need to update user interface in store to hold these generic fields or just cast
-                    // ideally update the User interface in store
+                    // Don't update email locally until confirmed
                 } as any)
             }
             refreshAvatar()
@@ -173,7 +184,6 @@ export function SettingsForm() {
             toast.success("Senha alterada com sucesso!")
             passwordForm.reset()
         } catch (error: any) {
-            console.error("Erro ao alterar senha", error)
             toast.error(error.response?.data?.message || "Erro ao alterar senha.")
         } finally {
             setLoading(false)
@@ -184,253 +194,313 @@ export function SettingsForm() {
         const file = e.target.files?.[0]
         if (file) {
             setSelectedFile(file);
-            // Create preview
-            const objectUrl = URL.createObjectURL(file)
-            setPreviewUrl(objectUrl)
+            setPreviewUrl(URL.createObjectURL(file))
         }
     }
 
-    const handleLogout = () => {
-        logout()
-        router.push("/login")
-    }
-
-    // ... (handleFileChange, handleLogout)
-
     return (
         <div className="space-y-8">
-            <Tabs defaultValue="profile" className="w-full">
-                {/* ... TabsList ... */}
+            <Form {...profileForm}>
+                <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-8">
 
-                <TabsContent value="profile" className="space-y-6 pt-4">
-                    <Form {...profileForm}>
-                        <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-4">
-
-                            <div className="flex flex-col items-center gap-4 mb-6">
-                                <UserAvatar
-                                    userId={user?.userId}
-                                    src={previewUrl || undefined}
-                                    fallbackName={user?.fullName}
-                                    hasAvatar={user?.hasAvatar}
-                                    className="h-32 w-32 border-4 border-background shadow-xl"
-                                />
-                                <div className="flex items-center gap-2">
-                                    <label htmlFor="picture-upload" className="cursor-pointer">
-                                        <div className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md text-sm font-medium">
-                                            <Upload className="h-4 w-4" />
-                                            Alterar Foto
-                                        </div>
-                                        <input
-                                            id="picture-upload"
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={handleFileChange}
-                                        />
+                    {/* SECTION 1: PERSONAL INFO */}
+                    <Card id="personal-info">
+                        <CardHeader>
+                            <CardTitle>Informações Pessoais</CardTitle>
+                            <CardDescription>Dados básicos da sua conta.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="flex flex-col md:flex-row items-start gap-6">
+                                {/* Avatar */}
+                                <div className="flex flex-col items-center gap-3">
+                                    <UserAvatar
+                                        userId={user?.userId}
+                                        src={previewUrl || undefined}
+                                        fallbackName={user?.fullName}
+                                        hasAvatar={user?.hasAvatar}
+                                        className="h-24 w-24 border-2 border-muted"
+                                    />
+                                    <label htmlFor="picture-upload" className="cursor-pointer text-sm font-medium text-primary hover:underline">
+                                        Alterar Foto
+                                        <input id="picture-upload" type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                                     </label>
                                 </div>
-                                {previewUrl && (
-                                    <p className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800 animate-pulse">
-                                        Clique em "Salvar Alterações" para confirmar a nova foto
-                                    </p>
-                                )}
-                            </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Fields */}
+                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                                    <FormField
+                                        control={profileForm.control}
+                                        name="full_name"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Nome Completo</FormLabel>
+                                                <FormControl><Input {...field} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={profileForm.control}
+                                        name="email"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Email</FormLabel>
+                                                <FormControl><Input {...field} /></FormControl>
+                                                <FormDescription>
+                                                    Mudar o email exige confirmação.
+                                                </FormDescription>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={profileForm.control}
+                                        name="phone"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <div className="flex items-center justify-between">
+                                                    <FormLabel>Celular</FormLabel>
+                                                    {!phoneVerified && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setOtpOpen(true)}
+                                                            className="text-xs text-amber-600 hover:underline flex items-center gap-1"
+                                                        >
+                                                            <AlertTriangle className="h-3 w-3" /> Verificar
+                                                        </button>
+                                                    )}
+                                                    {phoneVerified && (
+                                                        <span className="text-xs text-green-600 flex items-center gap-1">
+                                                            <CheckCircle2 className="h-3 w-3" /> Verificado
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="(00) 00000-0000"
+                                                        onChange={(e) => field.onChange(formatPhone(e.target.value))}
+                                                        maxLength={15}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* SECTION 2: PROFESSIONAL INFO (DOCTOR ONLY) */}
+                    {user?.role === 'DOCTOR' && (
+                        <Card id="professional-info">
+                            <CardHeader>
+                                <CardTitle>Informações Profissionais</CardTitle>
+                                <CardDescription>Dados do seu registro médico.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <FormField
                                     control={profileForm.control}
-                                    name="full_name"
+                                    name="crm"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Nome Completo</FormLabel>
-                                            <FormControl>
-                                                <Input {...field} />
-                                            </FormControl>
+                                            <FormLabel>CRM</FormLabel>
+                                            <FormControl><Input {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
                                 <FormField
                                     control={profileForm.control}
-                                    name="phone"
+                                    name="uf"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Telefone</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    {...field}
-                                                    placeholder="(00) 00000-0000"
-                                                    onChange={(e) => {
-                                                        const formatted = formatPhone(e.target.value)
-                                                        field.onChange(formatted)
-                                                    }}
-                                                    value={field.value}
-                                                    maxLength={15}
-                                                />
-                                            </FormControl>
+                                            <FormLabel>UF</FormLabel>
+                                            <FormControl><Input {...field} maxLength={2} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={profileForm.control}
+                                    name="rqe"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>RQE</FormLabel>
+                                            <FormControl><Input {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* SECTION 3: ADDRESS */}
+                    <Card id="address-info">
+                        <CardHeader>
+                            <CardTitle>Endereço {user?.role === 'DOCTOR' ? 'da Clínica' : ''}</CardTitle>
+                            <CardDescription>Localização para correspondência ou atendimento.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <FormField
+                                    control={profileForm.control}
+                                    name="zip_code"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>CEP</FormLabel>
+                                            <FormControl><Input {...field} placeholder="00000-000" /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={profileForm.control}
+                                    name="street"
+                                    render={({ field }) => (
+                                        <FormItem className="md:col-span-2">
+                                            <FormLabel>Rua</FormLabel>
+                                            <FormControl><Input {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
                             </div>
-
-                            <div className="border-t pt-4 mt-4">
-                                <h3 className="text-lg font-medium mb-4">Endereço</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <FormField
-                                        control={profileForm.control}
-                                        name="zip_code"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>CEP</FormLabel>
-                                                <FormControl>
-                                                    <Input {...field} placeholder="00000-000" />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={profileForm.control}
-                                        name="street"
-                                        render={({ field }) => (
-                                            <FormItem className="md:col-span-2">
-                                                <FormLabel>Rua</FormLabel>
-                                                <FormControl>
-                                                    <Input {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                    <FormField
-                                        control={profileForm.control}
-                                        name="number"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Número</FormLabel>
-                                                <FormControl>
-                                                    <Input {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={profileForm.control}
-                                        name="complement"
-                                        render={({ field }) => (
-                                            <FormItem className="md:col-span-2">
-                                                <FormLabel>Complemento</FormLabel>
-                                                <FormControl>
-                                                    <Input {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                    <FormField
-                                        control={profileForm.control}
-                                        name="neighborhood"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Bairro</FormLabel>
-                                                <FormControl>
-                                                    <Input {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={profileForm.control}
-                                        name="city"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Cidade</FormLabel>
-                                                <FormControl>
-                                                    <Input {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={profileForm.control}
-                                        name="state"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Estado</FormLabel>
-                                                <FormControl>
-                                                    <Input {...field} maxLength={2} placeholder="UF" />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <FormField
+                                    control={profileForm.control}
+                                    name="number"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Número</FormLabel>
+                                            <FormControl><Input {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={profileForm.control}
+                                    name="complement"
+                                    render={({ field }) => (
+                                        <FormItem className="md:col-span-2">
+                                            <FormLabel>Complemento</FormLabel>
+                                            <FormControl><Input {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
                             </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <FormField
+                                    control={profileForm.control}
+                                    name="neighborhood"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Bairro</FormLabel>
+                                            <FormControl><Input {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={profileForm.control}
+                                    name="city"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Cidade</FormLabel>
+                                            <FormControl><Input {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={profileForm.control}
+                                    name="state"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Estado</FormLabel>
+                                            <FormControl><Input {...field} maxLength={2} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                            <Button type="submit" disabled={loading} className="w-full md:w-auto">
-                                {loading ? "Salvando..." : "Salvar Alterações"}
-                            </Button>
-                        </form>
-                    </Form>
-                </TabsContent>
+                    <div className="flex justify-end">
+                        <Button type="submit" disabled={loading} size="lg" className="shadow-lg">
+                            {loading ? "Salvando..." : "Salvar Todas as Alterações"}
+                        </Button>
+                    </div>
+                </form>
+            </Form>
 
-                <TabsContent value="security" className="space-y-6 pt-4">
+            {/* SECTION 4: SECURITY */}
+            <Card id="security" className="border-red-100 bg-red-50/10">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <ShieldCheck className="h-5 w-5 text-primary" />
+                        Segurança
+                    </CardTitle>
+                    <CardDescription>Gerencie sua senha e acesso.</CardDescription>
+                </CardHeader>
+                <CardContent>
                     <Form {...passwordForm}>
                         <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
-                            <FormField
-                                control={passwordForm.control}
-                                name="old_password"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Senha Atual</FormLabel>
-                                        <FormControl>
-                                            <Input type="password" {...field} />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={passwordForm.control}
-                                name="new_password"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Nova Senha</FormLabel>
-                                        <FormControl>
-                                            <Input type="password" {...field} />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={passwordForm.control}
-                                name="confirm_password"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Confirmar Nova Senha</FormLabel>
-                                        <FormControl>
-                                            <Input type="password" {...field} />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <Button type="submit" disabled={loading}>
-                                {loading ? "Salvando..." : "Alterar Senha"}
-                            </Button>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <FormField
+                                    control={passwordForm.control}
+                                    name="old_password"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Senha Atual</FormLabel>
+                                            <FormControl><Input type="password" {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={passwordForm.control}
+                                    name="new_password"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Nova Senha</FormLabel>
+                                            <FormControl><Input type="password" {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={passwordForm.control}
+                                    name="confirm_password"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Confirmar Nova Senha</FormLabel>
+                                            <FormControl><Input type="password" {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                            <div className="flex justify-end mt-4">
+                                <Button type="submit" variant="outline" disabled={loading}>
+                                    Alterar Senha
+                                </Button>
+                            </div>
                         </form>
                     </Form>
-                </TabsContent>
-            </Tabs>
+                </CardContent>
+            </Card>
+
+            <OtpModal
+                open={otpOpen}
+                onOpenChange={setOtpOpen}
+                phone={profileForm.getValues("phone") || ""}
+                onVerified={() => setPhoneVerified(true)}
+            />
         </div>
     )
 }

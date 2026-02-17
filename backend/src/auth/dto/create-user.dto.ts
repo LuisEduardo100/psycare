@@ -36,4 +36,14 @@ export class CreateUserDto {
     @IsString()
     @IsOptional()
     phone?: string;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    cpf?: string;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    rqe?: string;
 }
