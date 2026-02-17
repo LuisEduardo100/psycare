@@ -7,16 +7,25 @@ import api from "@/lib/api"
 import { SentinelStats } from "@/components/dashboard/sentinel-stats"
 import { SentinelFilters } from "@/components/dashboard/sentinel-filters"
 import { SentinelAlertCard } from "@/components/dashboard/sentinel-alert-card"
+import { AlertActionModal } from "@/components/dashboard/alerts/alert-action-modal"
+import { useSSE } from "@/hooks/useSSE"
 import { useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 
 interface Alert {
     id: string
-    patient: { full_name: string; avatar_url?: string }
+    patient: {
+        id: string
+        user: {
+            full_name: string
+        }
+        avatar_url?: string
+    }
     severity: "LOW" | "MEDIUM" | "HIGH"
     trigger_source: string
-    status: "PENDING" | "VIEWED" | "CONTACTED" | "RESOLVED"
+    status: "PENDING" | "VIEWED" | "CONTACTED" | "RESOLVED" | "FALSE_POSITIVE"
     created_at: string
     trends?: {
         mood: "up" | "down" | "stable"
@@ -34,10 +43,20 @@ export default function AlertsPage() {
     const [filter, setFilter] = useState("ALL")
     const [search, setSearch] = useState("")
     const [isHydrated, setIsHydrated] = useState(false)
+    const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+    const [modalOpen, setModalOpen] = useState(false)
 
     useEffect(() => {
         setIsHydrated(true)
     }, [])
+
+    // Helper to check if alert is overdue (>24h)
+    const isOverdue = (createdAt: string) => {
+        const created = new Date(createdAt).getTime()
+        const now = new Date().getTime()
+        const hoursDiff = (now - created) / (1000 * 60 * 60)
+        return hoursDiff > 24
+    }
 
     const fetchAlerts = async () => {
         try {
@@ -50,6 +69,21 @@ export default function AlertsPage() {
         }
     }
 
+    // SSE Integration for real-time updates
+    useSSE({
+        onNewAlert: (data) => {
+            console.log('[SSE] New alert received:', data)
+            toast.info('Novo alerta recebido', {
+                description: `${data.alert?.patient?.user?.full_name || 'Paciente'} - ${data.alert?.trigger_source || 'Alerta'}`,
+            })
+            fetchAlerts() // Refresh alert list
+        },
+        onAlertUpdated: (data) => {
+            console.log('[SSE] Alert updated:', data)
+            fetchAlerts() // Refresh alert list
+        },
+    })
+
     useEffect(() => {
         if (!isHydrated) return
 
@@ -58,26 +92,27 @@ export default function AlertsPage() {
             return
         }
         fetchAlerts()
-        const interval = setInterval(fetchAlerts, 30000)
-        return () => clearInterval(interval)
     }, [isAuthenticated, router, isHydrated])
 
     const filteredAlerts = useMemo(() => {
         return alerts.filter((alert) => {
             const matchesFilter = filter === "ALL" || alert.severity === filter
+            const patientName = alert.patient?.user?.full_name || ""
             const matchesSearch = !search ||
-                alert.patient.full_name.toLowerCase().includes(search.toLowerCase())
+                patientName.toLowerCase().includes(search.toLowerCase())
             return matchesFilter && matchesSearch
         })
     }, [alerts, filter, search])
 
     const stats = useMemo(() => {
-        const active = alerts.filter((a) => a.status !== "RESOLVED")
+        const active = alerts.filter((a) => a.status !== "RESOLVED" && a.status !== "FALSE_POSITIVE")
         const critical = active.filter((a) => a.severity === "HIGH")
         const resolved = alerts.filter((a) => a.status === "RESOLVED")
+        const overdue = active.filter((a) => isOverdue(a.created_at))
         return {
             totalActive: active.length,
             critical: critical.length,
+            overdue: overdue.length,
             avgResponseTime: "2.4h",
             resolutionRate: alerts.length > 0
                 ? `${Math.round((resolved.length / alerts.length) * 100)}%`
@@ -85,13 +120,13 @@ export default function AlertsPage() {
         }
     }, [alerts])
 
-    const handleStatusChange = async (alertId: string, status: string) => {
-        try {
-            await api.patch(`/alerts/${alertId}/status`, { status })
-            fetchAlerts()
-        } catch (error) {
-            console.error("Failed to update alert", error)
-        }
+    const handleOpenActionModal = (alert: Alert) => {
+        setSelectedAlert(alert)
+        setModalOpen(true)
+    }
+
+    const handleModalSuccess = () => {
+        fetchAlerts()
     }
 
     return (
@@ -144,17 +179,35 @@ export default function AlertsPage() {
             ) : (
                 <div className="space-y-4">
                     {filteredAlerts.map((alert) => (
-                        <SentinelAlertCard
-                            key={alert.id}
-                            alert={alert}
-                            onViewProfile={(id) => console.log("View profile", id)}
-                            onContact={(id) => console.log("Contact", id)}
-                            onQuickNote={(id) => console.log("Quick note", id)}
-                            onStatusChange={handleStatusChange}
-                        />
+                        <div key={alert.id} className="relative">
+                            {/* SLA Warning Badge */}
+                            {alert.status === 'PENDING' && isOverdue(alert.created_at) && (
+                                <div className="absolute -top-2 -right-2 z-10">
+                                    <div className="flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse">
+                                        <Clock className="h-3 w-3" />
+                                        SLA: +24h
+                                    </div>
+                                </div>
+                            )}
+                            <SentinelAlertCard
+                                alert={alert}
+                                onViewProfile={(id) => router.push(`/dashboard/patients/${alert.patient.id}`)}
+                                onContact={(id) => handleOpenActionModal(alert)}
+                                onQuickNote={(id) => console.log("Quick note", id)}
+                                onStatusChange={(id, status) => handleOpenActionModal(alert)}
+                            />
+                        </div>
                     ))}
                 </div>
             )}
+
+            {/* Action Modal */}
+            <AlertActionModal
+                alert={selectedAlert}
+                open={modalOpen}
+                onClose={() => setModalOpen(false)}
+                onSuccess={handleModalSuccess}
+            />
         </div>
     )
 }

@@ -30,15 +30,21 @@ export function PatientMoodChart({ dailyLogs }: Props) {
     const chartData = useMemo(() => {
         return [...dailyLogs]
             .reverse()
-            .map(log => ({
-                date: new Date(log.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-                mood: log.mood_level,
-                moodRating: log.mood_rating,
-                anxiety: log.anxiety_level,
-                irritability: log.irritability_level,
-                sleep: log.sleep_hours,
-                sleepQuality: log.sleep_quality,
-            }))
+            .map(log => {
+                const d = new Date(log.date);
+                // Fix: Use UTC date to prevent timezone shift (e.g., 2026-02-17T00:00 -> 16/02 21:00)
+                const dateStr = `${d.getUTCDate().toString().padStart(2, '0')}/${(d.getUTCMonth() + 1).toString().padStart(2, '0')}`;
+
+                return {
+                    date: dateStr,
+                    mood: log.mood_level,
+                    moodRating: log.mood_rating,
+                    anxiety: log.anxiety_level,
+                    irritability: log.irritability_level,
+                    sleep: log.sleep_hours,
+                    sleepQuality: log.sleep_quality,
+                }
+            })
     }, [dailyLogs])
 
     if (chartData.length === 0) {

@@ -46,13 +46,14 @@ export function AppSidebar({ role, className }: AppSidebarProps) {
     const patientItems = [
         { title: "Início", icon: Home, url: "/app" },
         { title: "Agenda", icon: Calendar, url: "/minhas-consultas" },
+        { title: "Minhas Metas", icon: FileText, url: "/dashboard/my-goals" },
         { title: "Evolução", icon: Activity, url: "/timeline" },
     ]
 
     const doctorItems = [
         { title: "Dashboard", icon: Home, url: "/dashboard" },
-        { title: "Pacientes", icon: Users, url: "/dashboard/patients" },
         { title: "Agenda", icon: Calendar, url: "/dashboard/agenda" },
+        { title: "Pacientes", icon: Users, url: "/dashboard/patients" },
     ]
 
     const items = role === "DOCTOR" ? doctorItems : patientItems
@@ -74,7 +75,12 @@ export function AppSidebar({ role, className }: AppSidebarProps) {
             <div className="flex-1 overflow-y-auto py-6 px-3">
                 <nav className="space-y-1">
                     {items.map((item) => {
-                        const isActive = pathname === item.url || pathname.startsWith(item.url + "/")
+                        // Prevent root links (dashboard/app) from matching all sub-routes
+                        const isRoot = item.url === '/dashboard' || item.url === '/app';
+                        const isActive = isRoot
+                            ? pathname === item.url
+                            : pathname === item.url || pathname.startsWith(item.url + "/")
+
                         return (
                             <Link
                                 key={item.url}
@@ -98,8 +104,10 @@ export function AppSidebar({ role, className }: AppSidebarProps) {
             <div className="p-4 border-t border-border/50 space-y-2">
                 <Link href={settingsUrl} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer group">
                     <UserAvatar
+                        key={`${user?.userId}-${avatarVersion}`} // Force refresh when avatar changes
                         userId={user?.userId}
                         fallbackName={user?.fullName}
+                        hasAvatar={user?.hasAvatar}
                         className="h-9 w-9 border border-border group-hover:border-primary/50 transition-colors"
                     />
                     <div className="flex-1 min-w-0 text-left">

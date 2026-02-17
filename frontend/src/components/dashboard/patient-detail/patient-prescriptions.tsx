@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useTranslations } from "next-intl"
-import { Pill, Plus, AlertCircle } from "lucide-react"
+import { Pill, Plus, AlertCircle, Printer } from "lucide-react"
 
 interface Prescription {
     id: string
@@ -42,9 +42,15 @@ export function PatientPrescriptions({ prescriptions, patientId }: Props) {
                         <Pill className="h-5 w-5 text-emerald-600" />
                         {t("prescriptions")}
                     </CardTitle>
-                    <Badge variant="secondary" className="text-xs">
-                        {activePrescriptions.length} {t("active")}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs">
+                            {activePrescriptions.length} {t("active")}
+                        </Badge>
+                        <Button size="sm" className="h-7 gap-1" onClick={() => window.location.href = `/dashboard/patients/${patientId}/prescriptions/new`}>
+                            <Plus className="h-3 w-3" />
+                            Nova
+                        </Button>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>
@@ -80,18 +86,21 @@ function PrescriptionItem({ prescription }: { prescription: Prescription }) {
     const { medication } = prescription
 
     return (
-        <div className="border rounded-lg p-3 space-y-2 hover:bg-muted/30 transition-colors">
+        <div className="border rounded-lg p-3 space-y-2 hover:bg-muted/30 transition-colors group">
             <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${prescription.is_active ? "bg-green-500" : "bg-gray-300"}`} />
                     <span className="text-sm font-medium">{medication.name}</span>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1 items-center">
                     {medication.is_controlled && (
                         <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
                             Controlado
                         </Badge>
                     )}
+                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" title="Imprimir" onClick={() => window.print()}>
+                        <Printer className="h-3 w-3 text-slate-500" />
+                    </Button>
                 </div>
             </div>
             <div className="text-xs text-muted-foreground space-y-1 pl-4">

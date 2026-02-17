@@ -185,6 +185,27 @@ async function main() {
             console.log('LCM Daily Log seeded.');
         }
     }
+    // Seed ICD-10 Codes
+    const icd10Codes = [
+        { code: 'F32', description: 'Episódio depressivo', chapter: 'V' },
+        { code: 'F33', description: 'Transtorno depressivo recorrente', chapter: 'V' },
+        { code: 'F41', description: 'Outros transtornos ansiosos', chapter: 'V' },
+        { code: 'F41.0', description: 'Transtorno de pânico [ansiedade paroxística episódica]', chapter: 'V' },
+        { code: 'F41.1', description: 'Ansiedade generalizada', chapter: 'V' },
+        { code: 'F31', description: 'Transtorno afetivo bipolar', chapter: 'V' },
+        { code: 'F20', description: 'Esquizofrenia', chapter: 'V' },
+        { code: 'F90', description: 'Transtornos hipercinéticos', chapter: 'V' },
+    ];
+
+    console.log('Seeding ICD-10 codes...');
+    for (const item of icd10Codes) {
+        await prisma.iCD10Code.upsert({
+            where: { code: item.code },
+            update: {},
+            create: item,
+        });
+    }
+    console.log('ICD-10 seeded.');
 }
 
 main()

@@ -1,0 +1,25 @@
+{
+  "patient": {
+    "id": "ef9e21e9-4a72-417a-97a5-060dfdab8368",
+    "user_id": "c71aa435-0163-4e67-aac0-f93da17fb6b5",
+    "doctor_id": "a65dad17-1970-4a0a-908a-95c73a79e0b4",
+    "name": "Patient Zero"
+  },
+  "medications": [
+    {
+      "id": "32b6f00e-6da7-4d56-b327-c58c4f341e0d",
+      "name": "Clonazepam",
+      "form": "Comprimido"
+    },
+    {
+      "id": "56f29a47-8f55-4b08-863b-ae2c0bb90bca",
+      "name": "Sertralina",
+      "form": "Comprimido revestido"
+    },
+    {
+      "id": "f4db6dab-2072-4549-9bd4-c6682c144b99",
+      "name": "Quetiapina",
+      "form": "Comprimido"
+    }
+  ]
+}

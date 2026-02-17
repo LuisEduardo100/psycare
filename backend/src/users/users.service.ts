@@ -141,15 +141,50 @@ export class UsersService {
                     doctor_id: doctorId
                 }
             },
-            include: { patient_profile: true },
+            include: {
+                patient_profile: {
+                    include: {
+                        consultations: {
+                            where: { doctor_id: doctorId },
+                            orderBy: { date_time: 'desc' },
+                            take: 5,
+                            select: { id: true, date_time: true, status: true }
+                        },
+                        prescriptions: {
+                            where: { is_active: true },
+                            select: { id: true }
+                        }
+                    }
+                }
+            },
             orderBy: { full_name: 'asc' }
         });
 
         return users.map(user => {
-            const { password_hash, profile_picture, ...rest } = user;
+            const { password_hash, profile_picture, patient_profile, ...rest } = user;
+
+            // Find last finalized consultation
+            const lastConsultation = patient_profile?.consultations?.find((c: any) => c.status === 'FINALIZED')?.date_time || null;
+
+            // Find pending draft
+            const draftConsultation = patient_profile?.consultations?.find(c => c.status === 'DRAFT');
+            const draftConsultationId = draftConsultation?.id || null;
+
+            const activePrescriptionsCount = patient_profile?.prescriptions?.length || 0;
+
             return {
                 ...rest,
-                hasAvatar: !!profile_picture
+                patient_profile: {
+                    id: patient_profile?.id,
+                    cpf: patient_profile?.cpf,
+                    birth_date: patient_profile?.birth_date,
+                    gender: patient_profile?.gender,
+                    marital_status: patient_profile?.marital_status,
+                },
+                hasAvatar: !!profile_picture,
+                lastConsultation,
+                activePrescriptionsCount,
+                draftConsultationId
             };
         });
     }
@@ -251,6 +286,7 @@ export class UsersService {
                 user: {
                     select: {
                         id: true, full_name: true, email: true, phone: true,
+                        profile_picture: true,
                         created_at: true, last_login: true,
                     },
                 },
@@ -261,11 +297,11 @@ export class UsersService {
         if (patient.doctor_id !== doctorId) throw new UnauthorizedException('Unauthorized: patient not linked to this doctor');
 
         // Fetch related data in parallel
-        const [dailyLogs, prescriptions, alerts, consultations] = await Promise.all([
+        const [dailyLogs, prescriptions, alerts, consultations, clinicalEvolutions, therapeuticPlans] = await Promise.all([
             this.prisma.dailyLog.findMany({
                 where: { patient_id: patientId },
                 orderBy: { date: 'desc' },
-                take: 30,
+                take: 180, // Extended to support 6-month view
             }),
             this.prisma.prescription.findMany({
                 where: { patient_id: patientId },
@@ -282,6 +318,16 @@ export class UsersService {
                 orderBy: { date_time: 'desc' },
                 take: 10,
             }),
+            this.prisma.clinicalEvolution.findMany({
+                where: { patient_id: patientId },
+                orderBy: { created_at: 'desc' },
+                take: 10,
+            }),
+            this.prisma.therapeuticPlan.findMany({
+                where: { patient_id: patientId, deleted_at: null },
+                orderBy: { created_at: 'desc' },
+                take: 5
+            })
         ]);
 
         return {
@@ -290,11 +336,14 @@ export class UsersService {
             prescriptions,
             alerts,
             consultations,
+            clinical_evolutions: clinicalEvolutions,
+            draftConsultationId: consultations.find(c => c.status === 'DRAFT')?.id || null,
+            activeTherapeuticPlanId: therapeuticPlans.find(p => !p.deleted_at)?.id || null
         };
     }
 
     /**
-     * Paginated timeline: daily logs + consultations + alerts + prescriptions
+     * Paginated timeline: daily logs + consultations + alerts + prescriptions + clinical evolutions
      */
     async getPatientTimeline(doctorId: string, patientId: string, page = 1, limit = 20) {
         const patient = await this.prisma.patientProfile.findUnique({
@@ -306,7 +355,7 @@ export class UsersService {
         if (patient.doctor_id !== doctorId) throw new UnauthorizedException('Unauthorized');
 
         // Fetch all event types
-        const [dailyLogs, consultations, alerts, prescriptions] = await Promise.all([
+        const [dailyLogs, consultations, alerts, prescriptions, clinicalEvolutions] = await Promise.all([
             this.prisma.dailyLog.findMany({
                 where: { patient_id: patientId },
                 orderBy: { date: 'desc' },
@@ -323,6 +372,10 @@ export class UsersService {
                 where: { patient_id: patientId },
                 include: { medication: true },
                 orderBy: { start_date: 'desc' },
+            }),
+            this.prisma.clinicalEvolution.findMany({
+                where: { patient_id: patientId },
+                orderBy: { created_at: 'desc' },
             }),
         ]);
 
@@ -347,6 +400,11 @@ export class UsersService {
                 type: 'prescription' as const,
                 date: p.start_date,
                 data: p,
+            })),
+            ...clinicalEvolutions.map(e => ({
+                type: 'clinical_evolution' as const,
+                date: e.created_at,
+                data: e,
             })),
         ];
 
@@ -482,8 +540,12 @@ export class UsersService {
             return null;
         }
 
-        const { password_hash, two_factor_secret, recovery_codes, ...doctorData } = profile.doctor;
-        return doctorData;
+        const { password_hash, two_factor_secret, recovery_codes, profile_picture, ...doctorData } = profile.doctor;
+        return {
+            ...doctorData,
+            profile_picture,
+            hasAvatar: !!profile_picture
+        };
     }
     async updateProfile(userId: string, data: {
         fullName?: string;
@@ -496,6 +558,7 @@ export class UsersService {
         city?: string;
         state?: string;
         zipCode?: string;
+        cpf?: string;
     }) {
         const updateData: any = {};
         if (data.fullName) updateData.full_name = data.fullName;
@@ -510,6 +573,22 @@ export class UsersService {
         if (data.city) updateData.city = data.city;
         if (data.state) updateData.state = data.state;
         if (data.zipCode) updateData.zip_code = data.zipCode;
+
+        // Handle CPF logic
+        if (data.cpf) {
+            const user = await this.prisma.user.findUnique({ where: { id: userId } });
+            if (user && user.role === 'PATIENT') {
+                const profile = await this.findPatientProfile(userId);
+                if (profile) {
+                    await this.prisma.patientProfile.update({
+                        where: { id: profile.id },
+                        data: { cpf: data.cpf }
+                    });
+                }
+            } else {
+                updateData.cpf = data.cpf;
+            }
+        }
 
         return this.prisma.user.update({
             where: { id: userId },

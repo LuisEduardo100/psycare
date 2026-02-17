@@ -15,7 +15,7 @@ import { useAuthStore } from "@/store/useAuthStore"
 import { LogOut, Upload, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react"
 import { useRouter } from "@/i18n/routing"
 import { toast } from "sonner"
-import { formatPhone } from "@/lib/masks"
+import { formatPhone, formatCPF } from "@/lib/masks"
 import { OtpModal } from "./otp-modal"
 
 const passwordSchema = z.object({
@@ -31,6 +31,7 @@ const profileSchema = z.object({
     full_name: z.string().min(3, "Mínimo 3 caracteres"),
     email: z.string().email("Email inválido"),
     phone: z.string().optional(),
+    cpf: z.string().optional(),
     crm: z.string().optional(),
     uf: z.string().optional(),
     rqe: z.string().optional(),
@@ -67,6 +68,7 @@ export function SettingsForm() {
             full_name: user?.fullName || "",
             email: user?.email || "",
             phone: user?.phone || "",
+            cpf: user?.cpf || "",
             crm: (user as any)?.crm || "",
             uf: (user as any)?.uf || "",
             rqe: (user as any)?.rqe || "",
@@ -86,6 +88,7 @@ export function SettingsForm() {
                 full_name: user.fullName || "",
                 email: user.email || "",
                 phone: user.phone || "",
+                cpf: user.cpf || "",
                 crm: (user as any).crm || "",
                 uf: (user as any).uf || "",
                 rqe: (user as any).rqe || "",
@@ -129,6 +132,7 @@ export function SettingsForm() {
             const payload: any = {
                 full_name: values.full_name,
                 phone: values.phone,
+                cpf: values.cpf,
                 // Combine address into flat fields for User model update
                 street: values.street,
                 number: values.number,
@@ -161,6 +165,7 @@ export function SettingsForm() {
                 updateUser({
                     fullName: values.full_name,
                     phone: values.phone,
+                    cpf: values.cpf,
                     // Don't update email locally until confirmed
                 } as any)
             }
@@ -249,6 +254,24 @@ export function SettingsForm() {
                                                 <FormDescription>
                                                     Mudar o email exige confirmação.
                                                 </FormDescription>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={profileForm.control}
+                                        name="cpf"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>CPF</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="000.000.000-00"
+                                                        onChange={(e) => field.onChange(formatCPF(e.target.value))}
+                                                        maxLength={14}
+                                                    />
+                                                </FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )}

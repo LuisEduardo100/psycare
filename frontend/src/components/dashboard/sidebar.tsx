@@ -26,7 +26,6 @@ export function Sidebar() {
 
     const navigation = [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { name: "Meus Pacientes", href: "/dashboard/patients", icon: Users },
         { name: "Consultas", href: "/dashboard/appointments", icon: Calendar },
         { name: "Relatórios", href: "/dashboard/reports", icon: FileText },
         { name: "Configurações", href: "/dashboard/settings", icon: Settings },

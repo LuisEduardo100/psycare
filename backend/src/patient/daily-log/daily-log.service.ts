@@ -36,37 +36,6 @@ export class DailyLogService {
             throw new BadRequestException('Daily log for this date already exists');
         }
 
-        // Risk Analysis Logic (Sentinela)
-        let riskFlag = false;
-        let triggerSource = '';
-
-        // Gatilho Secundário: Ideação Suicida
-        if (dto.suicidal_ideation_flag) {
-            riskFlag = true;
-            triggerSource = 'SUICIDAL_IDEATION';
-        }
-
-        // Gatilho Primário: Drop de Humor (Depressão ou Mania severa por 3 dias)
-        // LCM: mood_level <= -2 (Depressão Moderada/Grave) ou >= 2 (Mania Moderada/Grave)
-        // Simplificação: Se mood_level <= -2 (Depressão)
-        if (dto.mood_level !== undefined && dto.mood_level <= -2) {
-            const lastLogs = await this.prisma.dailyLog.findMany({
-                where: {
-                    patient_id: patientProfile.id,
-                    date: { lt: logDate },
-                    mood_level: { not: null }
-                },
-                orderBy: { date: 'desc' },
-                take: 2,
-            });
-
-            if (lastLogs.length === 2 && lastLogs.every(log => log.mood_level !== null && log.mood_level <= -2)) {
-                riskFlag = true;
-                triggerSource = triggerSource ? `${triggerSource}, DEPRESSION_EPISODE` : 'DEPRESSION_EPISODE';
-            }
-        }
-        // Check for Mania? (Optional for now, focusing on safety/suicide risks usually linked to depression/mixed)
-
         // Create the DailyLog
         const log = await this.prisma.dailyLog.create({
             data: {
@@ -78,58 +47,35 @@ export class DailyLogService {
                 sleep_quality: dto.sleep_quality,
                 sleep_awakenings: dto.sleep_awakenings,
                 sleep_difficulty: dto.sleep_difficulty,
-                sleep_hours: dto.sleep_hours, // New
+                sleep_hours: dto.sleep_hours,
 
-                mood_rating: dto.mood_rating, // New
-                mood_level: dto.mood_level, // New
-                anxiety_level: dto.anxiety_level, // New
-                irritability_level: dto.irritability_level, // New
+                mood_rating: dto.mood_rating,
+                mood_level: dto.mood_level,
+                anxiety_level: dto.anxiety_level,
+                irritability_level: dto.irritability_level,
 
                 mood_tags: dto.mood_tags || [],
                 symptoms: dto.symptoms || [],
                 notes: dto.notes,
                 suicidal_ideation_flag: dto.suicidal_ideation_flag || false,
-                risk_flag: riskFlag,
+                risk_flag: false, // Will be set by event listener
 
                 exercise_minutes: dto.exercise_minutes,
                 exercise_type: dto.exercise_type,
                 exercise_intensity: dto.exercise_intensity,
 
-                menstruation_stage: dto.menstruation_stage, // New
-                life_event_description: dto.life_event_description, // New
-                life_event_impact: dto.life_event_impact, // New
+                menstruation_stage: dto.menstruation_stage,
+                life_event_description: dto.life_event_description,
+                life_event_impact: dto.life_event_impact,
             },
         });
 
-        // If risk detected, create Alert
-        if (riskFlag) {
-            const alert = await this.prisma.alert.create({
-                data: {
-                    patient_id: patientProfile.id,
-                    severity: 'HIGH',
-                    trigger_source: triggerSource,
-                    status: 'PENDING',
-                },
-            });
-
-            // Emit SSE event for new alert
-            const patientWithDoctor = await this.prisma.patientProfile.findUnique({
-                where: { id: patientProfile.id },
-                select: { doctor_id: true, user: { select: { full_name: true } } },
-            });
-            if (patientWithDoctor?.doctor_id) {
-                this.eventEmitter.emit('sse.event', {
-                    doctorId: patientWithDoctor.doctor_id,
-                    type: 'new_alert',
-                    data: {
-                        alertId: alert.id,
-                        patientName: patientWithDoctor.user.full_name,
-                        severity: 'HIGH',
-                        triggerSource: triggerSource,
-                    },
-                });
-            }
-        }
+        // Emit event for Sentinel System (RN-001) - AFTER DB commit
+        // The DailyLogListener will handle alert creation
+        this.eventEmitter.emit('daily-log.created', {
+            dailyLog: log,
+            patientId: patientProfile.id,
+        });
 
         // Emit SSE event for new daily log to linked doctor
         const patientInfo = await this.prisma.patientProfile.findUnique({
@@ -146,7 +92,6 @@ export class DailyLogService {
                     moodRating: dto.mood_rating,
                     moodLevel: dto.mood_level,
                     date: dto.date,
-                    riskFlag,
                 },
             });
         }
@@ -208,27 +153,23 @@ export class DailyLogService {
         if (!patientProfile) return null;
 
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        // Use UTC midnight to match how we store dates
+        const utcToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
+        const utcTomorrow = new Date(utcToday);
+        utcTomorrow.setDate(utcTomorrow.getDate() + 1);
 
         const log = await this.prisma.dailyLog.findFirst({
             where: {
                 patient_id: patientProfile.id,
                 date: {
-                    gte: today,
-                    lt: tomorrow,
+                    gte: utcToday,
+                    lt: utcTomorrow,
                 },
             },
         });
 
         if (!log) return null;
 
-        return {
-            sleepHours: log.sleep_hours,
-            sleepQuality: log.sleep_quality,
-            moodRating: log.mood_rating,
-            moodCompleted: !!log.mood_rating,
-        };
+        return log;
     }
 }

@@ -24,8 +24,13 @@ export function UserAvatar({ userId, fallbackName, className, src: propSrc, hasA
             return
         }
 
-        // Optimization: If we know user has no avatar, don't fetch
-        if (hasAvatar === false) {
+        // Optimization: If we know user has no avatar, or status is unknown, don't fetch to avoid 404s
+        // We only fetch if we are sure they have one (hasAvatar === true)
+        // Or if we have a direct src
+
+        // Note: This requires the parent component to pass hasAvatar={user?.hasAvatar}
+        // If hasAvatar is undefined, we assume no avatar to prevent 404 spam.
+        if (hasAvatar !== true) {
             return;
         }
 

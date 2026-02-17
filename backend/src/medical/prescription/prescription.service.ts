@@ -57,6 +57,15 @@ export class PrescriptionService {
         });
     }
 
+    async findOne(id: string) {
+        const prescription = await this.prisma.prescription.findUnique({
+            where: { id },
+            include: { medication: true },
+        });
+        if (!prescription) throw new NotFoundException('Prescription not found');
+        return prescription;
+    }
+
     async findAllForPatient(patientId: string) {
         return this.prisma.prescription.findMany({
             where: { patient_id: patientId, is_active: true },

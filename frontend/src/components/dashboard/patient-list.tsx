@@ -15,6 +15,7 @@ interface Patient {
         phone?: string
         cpf?: string
     } | any
+    lastConsultation?: string
 }
 
 export function PatientList() {
@@ -68,9 +69,7 @@ export function PatientList() {
                         <tr>
                             <th className="px-6 py-4 text-left lg:px-8">Paciente</th>
                             <th className="hidden px-6 py-4 text-left lg:table-cell">Nível de Risco</th>
-                            <th className="hidden px-6 py-4 text-left lg:table-cell">Último Check-in</th>
-                            <th className="hidden px-6 py-4 text-left lg:table-cell">Fase da Terapia</th>
-                            <th className="px-6 py-4 text-right lg:px-8">Ação</th>
+                            <th className="hidden px-6 py-4 text-left lg:table-cell">Última Consulta</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-primary/5 dark:divide-slate-700">
@@ -88,7 +87,7 @@ export function PatientList() {
                                         <UserAvatar
                                             userId={patient.id}
                                             fallbackName={patient.full_name}
-                                            hasAvatar={(patient as any).hasAvatar} // Cast for now or update interface
+                                            hasAvatar={(patient as any).hasAvatar}
                                             className="h-10 w-10 border border-slate-200"
                                         />
                                         <div>
@@ -104,21 +103,13 @@ export function PatientList() {
                                     </span>
                                 </td>
                                 <td className="hidden px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 lg:table-cell">
-                                    Ontem
-                                </td>
-                                <td className="hidden px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400 lg:table-cell">
-                                    Manutenção
-                                </td>
-                                <td className="px-6 py-4 text-right lg:px-8">
-                                    <button className="text-[#4c9a93] transition-colors hover:text-primary">
-                                        <MoreHorizontal className="h-5 w-5" />
-                                    </button>
+                                    {patient.lastConsultation ? new Date(patient.lastConsultation).toLocaleDateString("pt-BR") : "Nenhuma"}
                                 </td>
                             </tr>
                         ))}
                         {filteredPatients.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="py-8 text-center text-slate-500">
+                                <td colSpan={3} className="py-8 text-center text-slate-500">
                                     {searchTerm ? 'Nenhum paciente encontrado com este nome.' : 'Nenhum paciente encontrado.'}
                                 </td>
                             </tr>

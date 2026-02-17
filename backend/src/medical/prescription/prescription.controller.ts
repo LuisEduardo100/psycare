@@ -28,6 +28,12 @@ export class PrescriptionController {
         return [];
     }
 
+    @Get(':id')
+    @Roles('DOCTOR', 'PATIENT')
+    findOne(@Param('id') id: string) {
+        return this.prescriptionService.findOne(id);
+    }
+
     @Delete(':id')
     @Roles('DOCTOR')
     deactivate(@Param('id') id: string) {

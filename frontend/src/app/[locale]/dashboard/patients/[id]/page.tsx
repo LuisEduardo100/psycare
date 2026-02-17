@@ -6,9 +6,17 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Printer, Plus, AlertTriangle, Moon, Edit, Activity, FileText } from "lucide-react"
+import { ArrowLeft, Printer, Plus, AlertTriangle, Moon, Edit, Activity, FileText, ChevronLeft, ChevronRight, Target, Clock } from "lucide-react"
 import { toast } from "sonner"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area } from 'recharts'
+import { UserAvatar } from "@/components/shared/user-avatar"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 
 export default function PatientDetailPage() {
     const { user, isAuthenticated } = useAuthStore()
@@ -16,9 +24,25 @@ export default function PatientDetailPage() {
     const params = useParams()
     const id = params.id as string
 
+    console.log('PatientDetailPage - ID:', id)
+
     const [patient, setPatient] = useState<any>(null)
     const [loading, setLoading] = useState(true)
+    const [selectedPrescription, setSelectedPrescription] = useState<any>(null)
     const [chartRange, setChartRange] = useState<'7d' | '30d' | '6m'>('30d')
+    const [currentPage, setCurrentPage] = useState(1)
+    const itemsPerPage = 2
+
+    // Sort logs descending for timeline (newest first)
+    const sortedLogs = patient?.dailyLogs ? [...patient.dailyLogs].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()) : []
+    const totalPages = Math.ceil(sortedLogs.length / itemsPerPage)
+    const currentLogs = sortedLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage)
+        }
+    }
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -45,12 +69,18 @@ export default function PatientDetailPage() {
 
         const now = new Date()
         const cutoff = new Date()
+        cutoff.setHours(0, 0, 0, 0) // Normalize to midnight
 
         if (chartRange === '7d') cutoff.setDate(now.getDate() - 7)
         if (chartRange === '30d') cutoff.setDate(now.getDate() - 30)
         if (chartRange === '6m') cutoff.setMonth(now.getMonth() - 6)
 
-        return patient.dailyLogs.filter((log: any) => new Date(log.date) >= cutoff)
+        return patient.dailyLogs.filter((log: any) => {
+            const logDate = new Date(log.date)
+            // Compare timestamps to be safe, or just use date string if possible
+            // But since log.date might be UTC, let's just check if it's generally after cutoff
+            return logDate >= cutoff
+        })
     }
 
     if (!isAuthenticated) return null
@@ -89,13 +119,57 @@ export default function PatientDetailPage() {
                     </div>
                 </div>
                 <div className="flex gap-3">
-                    <Button variant="outline" className="gap-2 border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                    <Button
+                        variant="outline"
+                        className="gap-2 border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                        onClick={() => {
+                            if (patient.activeTherapeuticPlanId) {
+                                router.push(`/dashboard/patients/${id}/therapeutic-plan/${patient.activeTherapeuticPlanId}`)
+                            } else {
+                                router.push(`/dashboard/patients/${id}/therapeutic-plan/new`)
+                            }
+                        }}
+                    >
+                        <Target className="h-4 w-4" />
+                        Plano Terapêutico
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="gap-2 border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                        onClick={() => router.push(`/dashboard/patients/${id}/report`)}
+                    >
                         <Printer className="h-4 w-4" />
                         Imprimir Relatório
                     </Button>
-                    <Button className="gap-2 bg-primary font-bold shadow-sm shadow-primary/20 hover:bg-primary/90">
-                        <Plus className="h-4 w-4" />
-                        Nova Consulta
+                    <Button
+                        className="gap-2 bg-primary font-bold shadow-sm shadow-primary/20 hover:bg-primary/90"
+                        onClick={() => {
+                            if (patient.draftConsultationId) {
+                                router.push(`/dashboard/consultations/${patient.draftConsultationId}`)
+                            } else {
+                                router.push(`/dashboard/consultations/new?patientId=${id}`)
+                            }
+                        }}
+                    >
+                        {patient.draftConsultationId ? (
+                            <>
+                                <Edit className="h-4 w-4" />
+                                Continuar Consulta
+                            </>
+                        ) : (
+                            <>
+                                <Plus className="h-4 w-4" />
+                                Nova Consulta
+                            </>
+                        )}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => router.push(`/dashboard/patients/${id}/history`)}
+                    >
+                        <Clock className="h-4 w-4" />
+                        Histórico
                     </Button>
                 </div>
             </header>
@@ -104,11 +178,12 @@ export default function PatientDetailPage() {
                 {/* Patient Profile Summary Card */}
                 <div className="mb-8 flex flex-col items-start gap-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800 md:flex-row">
                     <div className="flex flex-1 items-center gap-6">
-                        <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-2 border-slate-50 bg-slate-100 dark:border-slate-700 dark:bg-slate-700">
-                            <img
-                                className="h-full w-full object-cover"
-                                alt={`Portrait of ${patient.user?.full_name}`}
-                                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patient.user?.full_name || 'User')}&background=0D968B&color=fff`}
+                        <div className="h-24 w-24 shrink-0 font-bold text-3xl">
+                            <UserAvatar
+                                userId={patient.user?.id}
+                                fallbackName={patient.user?.full_name}
+                                className="h-full w-full rounded-2xl border-2 border-slate-50 shadow-sm"
+                                hasAvatar={!!patient.user?.profile_picture}
                             />
                         </div>
                         <div className="space-y-2">
@@ -121,12 +196,7 @@ export default function PatientDetailPage() {
                                 </span>
                             </div>
                             <div className="grid grid-cols-2 gap-x-8 gap-y-1 lg:grid-cols-4">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">CPF</span>
-                                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                        {patient.cpf || 'PENDENTE'}
-                                    </span>
-                                </div>
+                                {/* CPF Removed as per request */}
                                 <div className="flex flex-col">
                                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Idade / Gênero</span>
                                     <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
@@ -181,16 +251,19 @@ export default function PatientDetailPage() {
                             </div>
 
                             {/* Visual Chart with Recharts */}
-                            <div className="h-64 w-full">
+                            <div className="h-64 w-full min-h-[256px]">
                                 {getFilteredLogs().length > 0 ? (
                                     <ResponsiveContainer width="100%" height="100%">
                                         <LineChart
                                             data={[...getFilteredLogs()]
                                                 .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                                                .map((log: any) => ({
-                                                    date: new Date(log.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-                                                    mood: log.mood_rating || 0
-                                                }))
+                                                .map((log: any) => {
+                                                    const d = new Date(log.date);
+                                                    return {
+                                                        date: `${d.getUTCDate().toString().padStart(2, '0')}/${(d.getUTCMonth() + 1).toString().padStart(2, '0')}`, // UTC fix
+                                                        mood: log.mood_rating || 0
+                                                    }
+                                                })
                                             }
                                             margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                                         >
@@ -219,10 +292,11 @@ export default function PatientDetailPage() {
                                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                                 cursor={{ stroke: '#0d968b', strokeWidth: 1, strokeDasharray: '4 4' }}
                                             />
-                                            <Area type="monotone" dataKey="mood" stroke="#0d968b" fillOpacity={1} fill="url(#colorMood)" />
+                                            <Area type="monotone" dataKey="mood" stroke="#0d968b" fillOpacity={1} fill="url(#colorMood)" tooltipType="none" />
                                             <Line
                                                 type="monotone"
                                                 dataKey="mood"
+                                                name="Humor"
                                                 stroke="#0d968b"
                                                 strokeWidth={3}
                                                 dot={{ r: 4, fill: '#fff', stroke: '#0d968b', strokeWidth: 2 }}
@@ -242,13 +316,13 @@ export default function PatientDetailPage() {
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <h4 className="text-base font-bold text-slate-900 dark:text-white">Linha do Tempo Clínica</h4>
-                                <button className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">
-                                    Ver Arquivo <span className="text-sm">↗</span>
-                                </button>
+                                <span className="text-xs text-slate-500">
+                                    Página {currentPage} de {totalPages || 1}
+                                </span>
                             </div>
 
                             {/* Render Daily Logs */}
-                            {patient.dailyLogs?.map((log: any) => (
+                            {currentLogs.map((log: any) => (
                                 <div key={log.id} className="rounded-xl border-l-4 border-primary border-y border-r border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:border-l-primary dark:bg-slate-800">
                                     <div className="mb-4 flex justify-between">
                                         <div className="flex items-center gap-3">
@@ -258,7 +332,12 @@ export default function PatientDetailPage() {
                                             <div>
                                                 <h5 className="text-sm font-bold leading-none text-slate-900 dark:text-white">Registro Diário</h5>
                                                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                                    {new Date(log.date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                                                    {(() => {
+                                                        const d = new Date(log.date);
+                                                        const dateStr = `${d.getUTCDate().toString().padStart(2, '0')} de ${['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][d.getUTCMonth()]} de ${d.getUTCFullYear()}`;
+                                                        const weekDay = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'][d.getUTCDay()];
+                                                        return `${weekDay}, ${dateStr}`;
+                                                    })()}
                                                 </p>
                                             </div>
                                         </div>
@@ -359,6 +438,30 @@ export default function PatientDetailPage() {
                                 </div>
                             ))}
 
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-center gap-4 pt-4">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handlePageChange(currentPage - 1)}
+                                        disabled={currentPage === 1}
+                                        className="gap-1"
+                                    >
+                                        <ChevronLeft className="h-4 w-4" /> Anterior
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handlePageChange(currentPage + 1)}
+                                        disabled={currentPage === totalPages}
+                                        className="gap-1"
+                                    >
+                                        Próximo <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            )}
+
                             {(!patient.dailyLogs || patient.dailyLogs.length === 0) && (
                                 <div className="rounded-xl border-l-4 border-slate-200 border-y border-r border-slate-100 bg-white p-6 opacity-80 shadow-sm dark:border-slate-700 dark:border-l-slate-600 dark:bg-slate-800">
                                     <div className="text-center text-sm text-slate-500">Nenhum registro recente encontrado.</div>
@@ -406,24 +509,20 @@ export default function PatientDetailPage() {
                             </div>
                             <div className="space-y-4">
                                 {patient.prescriptions?.map((prescription: any) => (
-                                    <div key={prescription.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-700/50">
+                                    <div
+                                        key={prescription.id}
+                                        className="rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-700/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                        onClick={() => setSelectedPrescription(prescription)}
+                                    >
                                         <div className="mb-1 flex items-start justify-between">
                                             <p className="text-sm font-bold text-primary">{prescription.medication?.name}</p>
-                                            <span className="rounded border border-slate-100 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-400 dark:border-slate-600 dark:bg-slate-700">
-                                                Uso Contínuo
-                                            </span>
                                         </div>
                                         <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                            {prescription.dosage} • {prescription.frequency}
+                                            {prescription.medication?.form}
                                         </p>
-                                        <div className="mt-2 flex items-center justify-between">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-[10px] text-slate-500 dark:text-slate-400">Aderência:</span>
-                                                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-600">
-                                                    <div className="h-full w-[95%] bg-emerald-500"></div>
-                                                </div>
-                                            </div>
-                                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">95%</span>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <Clock className="h-3 w-3 text-slate-400" />
+                                            <span className="text-[10px] text-slate-500 dark:text-slate-400">{prescription.frequency}</span>
                                         </div>
                                     </div>
                                 ))}
@@ -432,11 +531,84 @@ export default function PatientDetailPage() {
                                     <p className="text-xs text-slate-500 dark:text-slate-400">Nenhuma medicação registrada.</p>
                                 )}
 
-                                <button className="w-full rounded-lg border border-dashed border-slate-300 py-2 text-xs font-bold text-slate-500 transition-colors hover:border-primary hover:text-primary dark:border-slate-600 dark:text-slate-400 dark:hover:text-primary">
+                                <button
+                                    onClick={() => router.push(`/dashboard/patients/${id}/prescriptions/new`)}
+                                    className="w-full rounded-lg border border-dashed border-slate-300 py-2 text-xs font-bold text-slate-500 transition-colors hover:border-primary hover:text-primary dark:border-slate-600 dark:text-slate-400 dark:hover:text-primary"
+                                >
                                     + Adicionar Prescrição
                                 </button>
                             </div>
                         </div>
+
+                        {/* Prescription Detail Dialog */}
+                        <Dialog open={!!selectedPrescription} onOpenChange={(open) => !open && setSelectedPrescription(null)}>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>{selectedPrescription?.medication?.name}</DialogTitle>
+                                    <DialogDescription>
+                                        {selectedPrescription?.form || selectedPrescription?.medication?.form}
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <div className="space-y-4 mt-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <h4 className="text-sm font-medium leading-none">Dosagem Prescrita</h4>
+                                            <p className="text-sm text-muted-foreground">{selectedPrescription?.dosage}</p>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <h4 className="text-sm font-medium leading-none">Frequência</h4>
+                                            <p className="text-sm text-muted-foreground">{selectedPrescription?.frequency}</p>
+                                        </div>
+
+                                        {selectedPrescription?.duration && (
+                                            <div className="space-y-1">
+                                                <h4 className="text-sm font-medium leading-none">Duração</h4>
+                                                <p className="text-sm text-muted-foreground">{selectedPrescription?.duration}</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {selectedPrescription?.instructions && (
+                                        <div className="space-y-2 pt-2 border-t dark:border-slate-700">
+                                            <h4 className="text-sm font-medium leading-none flex items-center gap-2">
+                                                <FileText className="w-4 h-4 text-primary" />
+                                                Instruções Específicas
+                                            </h4>
+                                            <ul className="text-sm text-muted-foreground list-disc pl-4 space-y-1">
+                                                {selectedPrescription.instructions.split('. ').map((instruction: string, idx: number) => {
+                                                    const trimmed = instruction.trim();
+                                                    // Skip old bundled fields
+                                                    if (trimmed.startsWith('Forma:') || trimmed.startsWith('Frequência:') || trimmed.startsWith('Duração:')) {
+                                                        return null;
+                                                    }
+                                                    return trimmed && <li key={idx}>{trimmed}</li>
+                                                })}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {!selectedPrescription?.instructions && (
+                                        <div className="space-y-2 pt-2 border-t dark:border-slate-700">
+                                            <p className="text-sm text-muted-foreground italic">
+                                                Nenhuma instrução específica cadastrada para esta medicação.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {selectedPrescription?.medication?.safety_tips && (
+                                        <div className="bg-amber-50 p-3 rounded-lg border border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30">
+                                            <h4 className="text-sm font-medium text-amber-800 mb-1 flex items-center gap-2 dark:text-amber-400">
+                                                <AlertTriangle className="h-4 w-4" />
+                                                Observações de Segurança
+                                            </h4>
+                                            <p className="text-xs text-amber-700 dark:text-amber-300">{selectedPrescription.medication.safety_tips}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </DialogContent>
+                        </Dialog>
 
                         {/* Vital Signs Summary */}
                         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">

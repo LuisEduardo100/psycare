@@ -130,6 +130,7 @@ model PatientProfile {
   alerts               Alert[]
   consent_logs         ConsentLog[]
   notifications_log    NotificationLog[]
+  clinical_evolutions  ClinicalEvolution[]
   
   @@map("patient_profiles")
 }
@@ -228,7 +229,8 @@ model ClinicalEvolution {
   id                   String        @id @default(uuid())
   consultation_id      String?
   consultation         Consultation? @relation(fields: [consultation_id], references: [id])
-  patient_id           String // Redundant but useful for queries without joining consultation
+  patient_id           String
+  patient_profile      PatientProfile @relation(fields: [patient_id], references: [id])
   
   type                 String        // NOTE, PHONE_CALL, CRISIS, etc.
   content              String        // Encrypted
@@ -267,6 +269,9 @@ model Prescription {
   
   dosage               String
   frequency            String
+  form                 String?
+  duration             String?
+  instructions         String?       @db.Text
   start_date           DateTime
   end_date             DateTime?
   is_active            Boolean       @default(true)
@@ -311,6 +316,8 @@ model FormalPrescriptionItem {
   
   dosage                String
   quantity              String             // "1 caixa", "30 comprimidos"
+  form                  String?
+  duration              String?
   instructions          String?
   
   @@map("formal_prescription_items")

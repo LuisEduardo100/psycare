@@ -9,8 +9,11 @@ import { cn } from "@/lib/utils"
 interface Alert {
     id: string
     patient: {
-        full_name: string
         id: string
+        user: {
+            full_name: string
+        }
+        avatar_url?: string
     }
     severity: 'LOW' | 'MEDIUM' | 'HIGH'
     trigger_source: string
@@ -38,8 +41,8 @@ export function SentinelAlertsList() {
     }, [])
 
     const getAlertIcon = (trigger: string) => {
-        if (trigger.toLowerCase().includes('sleep')) return Moon
-        if (trigger.toLowerCase().includes('mood')) return TrendingDown
+        if (trigger?.toLowerCase().includes('sleep')) return Moon
+        if (trigger?.toLowerCase().includes('mood')) return TrendingDown
         return AlertTriangle
     }
 
@@ -91,10 +94,12 @@ export function SentinelAlertsList() {
                 ) : (
                     alerts.map((alert) => {
                         const Icon = getAlertIcon(alert.trigger_source)
+                        const patientName = alert.patient?.user?.full_name || "Paciente"
+
                         return (
                             <Link
                                 key={alert.id}
-                                href={`/dashboard/patients/${alert.patient.id}`}
+                                href={`/dashboard/patients/${alert.patient?.id}`}
                                 className={cn(
                                     "flex items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-800 shadow-sm border-l-4 group transition-all hover:bg-slate-50 dark:hover:bg-slate-700/50",
                                     getBorderColor(alert.severity)
@@ -106,12 +111,12 @@ export function SentinelAlertsList() {
                                         getRingColor(alert.severity)
                                     )}>
                                         <span className="font-bold text-slate-500">
-                                            {alert.patient.full_name.charAt(0)}
+                                            {patientName.charAt(0)}
                                         </span>
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-slate-900 dark:text-white">
-                                            {alert.patient.full_name}
+                                            {patientName}
                                         </h3>
                                         <p className={cn("text-sm font-medium flex items-center gap-1", getTextColor(alert.severity))}>
                                             <Icon className="h-4 w-4" />

@@ -10,9 +10,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { SegmentedControl } from "@/components/ui/segmented-control"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import api from "@/lib/api"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Smile, HeartPulse, Waves, Zap, Moon, Sun, Pill, ArrowRight, Activity } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -104,6 +105,39 @@ export function DailyLogForm() {
         },
     })
 
+    // Check for existing log for today
+    useEffect(() => {
+        const checkTodayLog = async () => {
+            try {
+                const response = await api.get("/daily-logs/today")
+                if (response.data) {
+                    const log = response.data
+
+                    form.reset({
+                        mood_rating: log.mood_rating || 3,
+                        mood_level: log.mood_level || 0,
+                        anxiety_level: log.anxiety_level || 0,
+                        irritability_level: log.irritability_level || 0,
+                        sleep_bedtime: log.sleep_bedtime ? new Date(log.sleep_bedtime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : "",
+                        sleep_onset_time: log.sleep_onset_time ? new Date(log.sleep_onset_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : "",
+                        sleep_wake_time: log.sleep_wake_time ? new Date(log.sleep_wake_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : "",
+                        sleep_quality: log.sleep_quality || 3,
+                        sleep_difficulty: log.sleep_difficulty || false,
+                        did_exercise: (log.exercise_minutes || 0) > 0,
+                        exercise_types: log.exercise_type ? log.exercise_type.split(", ") : [],
+                        exercise_other: "",
+                        adverse_effects: log.symptoms || [],
+                        notes: log.notes || "",
+                        suicidal_ideation_flag: log.suicidal_ideation_flag || false,
+                    })
+                }
+            } catch (error) {
+                console.error("Error fetching today's log", error)
+            }
+        }
+        checkTodayLog()
+    }, [form])
+
     const sleepBedtime = form.watch("sleep_bedtime")
     const sleepWakeTime = form.watch("sleep_wake_time")
     const moodLevel = form.watch("mood_level")
@@ -172,15 +206,26 @@ export function DailyLogForm() {
             }
 
             await api.post("/daily-logs", payload)
-            // alert(t("successMessage"))
+            toast.success(t("success"), {
+                description: t("successDescription"),
+            })
             form.reset()
         } catch (error: any) {
             console.error("Failed to submit log", error.response?.data || error)
-            alert(t("errorMessage"))
+            if (error.response?.status === 400 && error.response?.data?.message?.includes('already exists')) {
+                toast.error("Erro ao salvar", {
+                    description: "Você já enviou um registro diário hoje."
+                })
+            } else {
+                toast.error(t("error"), {
+                    description: t("errorDescription"),
+                })
+            }
         } finally {
             setLoading(false)
         }
     }
+
 
     return (
         <Form {...form}>
@@ -254,7 +299,7 @@ export function DailyLogForm() {
                                         min={-3}
                                         max={3}
                                         step={1}
-                                        value={[field.value]}
+                                        value={[field.value ?? 0]}
                                         onValueChange={(vals) => field.onChange(vals[0])}
                                         className="py-4"
                                     />

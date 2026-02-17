@@ -11,6 +11,7 @@ interface User {
     phone?: string;
     profilePicture?: string;
     hasAvatar?: boolean;
+    hasProfile?: boolean;
     isTwoFactorAuthenticated: boolean;
 
     // Doctor Fields
@@ -79,6 +80,7 @@ export const useAuthStore = create<AuthState>()(
                                 fullName: userData.full_name,
                                 phone: userData.phone,
                                 hasAvatar: userData.hasAvatar,
+                                hasProfile: userData.hasProfile,
 
                                 // Map new fields
                                 crm: userData.crm,

@@ -17,10 +17,16 @@ import { ptBR } from "date-fns/locale"
 
 interface AlertData {
     id: string
-    patient: { full_name: string; avatar_url?: string }
+    patient: {
+        id: string
+        user: {
+            full_name: string
+        }
+        avatar_url?: string
+    }
     severity: "LOW" | "MEDIUM" | "HIGH"
     trigger_source: string
-    status: "PENDING" | "VIEWED" | "CONTACTED" | "RESOLVED"
+    status: "PENDING" | "VIEWED" | "CONTACTED" | "RESOLVED" | "FALSE_POSITIVE"
     created_at: string
     trends?: {
         mood: "up" | "down" | "stable"
@@ -48,6 +54,7 @@ const statusConfig = {
     VIEWED: { badge: "bg-blue-50 text-blue-700 border-blue-200", label: "Visualizado" },
     CONTACTED: { badge: "bg-teal-50 text-teal-700 border-teal-200", label: "Contatado" },
     RESOLVED: { badge: "bg-green-50 text-green-700 border-green-200", label: "Resolvido" },
+    FALSE_POSITIVE: { badge: "bg-gray-50 text-gray-700 border-gray-200", label: "Falso Positivo" },
 }
 
 function TrendIcon({ trend }: { trend: "up" | "down" | "stable" }) {
@@ -65,7 +72,9 @@ export function SentinelAlertCard({
 }: SentinelAlertCardProps) {
     const severity = severityConfig[alert.severity]
     const status = statusConfig[alert.status]
-    const initials = alert.patient.full_name
+    const patientName = alert.patient?.user?.full_name || "Paciente"
+
+    const initials = patientName
         .split(" ")
         .map((n) => n[0])
         .slice(0, 2)
@@ -104,7 +113,7 @@ export function SentinelAlertCard({
                     </Avatar>
                     <div className="flex-1 min-w-0">
                         <h4 className="font-semibold text-foreground text-sm truncate">
-                            {alert.patient.full_name}
+                            {patientName}
                         </h4>
                         <p className="text-xs text-muted-foreground truncate">
                             {alert.trigger_source}

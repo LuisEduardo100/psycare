@@ -12,13 +12,17 @@ import { PatientHeader } from "@/components/patient/patient-header"
 import { Badge } from "@/components/ui/badge"
 import { Link } from "@/i18n/routing"
 import api from "@/lib/api"
+import { UserAvatar } from "@/components/shared/user-avatar"
 
 interface DaySummary {
-    sleepHours?: number
-    sleepQuality?: string
-    moodRating?: number
-    moodCompleted?: boolean
+    sleep_hours?: number
+    sleep_quality?: number
+    mood_rating?: number
+    mood_level?: number
 }
+
+
+
 
 interface NextAppointment {
     doctorName: string
@@ -27,6 +31,7 @@ interface NextAppointment {
     time: string
     modality: string
     daysUntil: number
+    doctorId?: string
 }
 
 interface TimelineEntry {
@@ -45,7 +50,7 @@ export default function PatientAppPage() {
     const [daySummary, setDaySummary] = useState<DaySummary | null>(null)
     const [nextAppointment, setNextAppointment] = useState<NextAppointment | null>(null)
     const [timeline, setTimeline] = useState<TimelineEntry[]>([])
-    const [doctor, setDoctor] = useState<{ name: string; specialty?: string } | null>(null)
+    const [doctor, setDoctor] = useState<{ id: string; name: string; specialty?: string; hasAvatar?: boolean } | null>(null)
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -84,22 +89,16 @@ export default function PatientAppPage() {
         api.get("/users/me/doctor").then((res) => {
             if (res.data) {
                 setDoctor({
+                    id: res.data.id,
                     name: res.data.full_name,
-                    specialty: res.data.specialty || "Psiquiatra"
+                    specialty: res.data.specialty || "Psiquiatra",
+                    hasAvatar: res.data.hasAvatar
                 })
             }
         }).catch((err) => {
             console.error("Failed to fetch doctor info", err)
         })
-
-        // Use nextAppointment as immediate fallback if doctor fetch hasn't completed or failed
-        if (nextAppointment?.doctorName && !doctor) {
-            setDoctor({
-                name: nextAppointment.doctorName,
-                specialty: nextAppointment.specialty
-            })
-        }
-    }, [isAuthenticated, user, router, nextAppointment])
+    }, [isAuthenticated, user, router])
 
     if (!isAuthenticated || !user) {
         return null
@@ -170,18 +169,18 @@ export default function PatientAppPage() {
                                     <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
                                         <Moon className="h-5 w-5" />
                                     </div>
-                                    {daySummary?.sleepHours && (
+                                    {daySummary?.sleep_hours && (
                                         <CheckCircle className="h-5 w-5 text-green-500" />
                                     )}
                                 </div>
                                 <div className="relative z-10">
                                     <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">{t("sleepHours")}</p>
                                     <p className="text-xl font-extrabold text-foreground">
-                                        {daySummary?.sleepHours ? `${daySummary.sleepHours}h` : "—"}
+                                        {daySummary?.sleep_hours ? `${daySummary.sleep_hours}h` : "—"}
                                     </p>
-                                    {daySummary?.sleepQuality && (
+                                    {daySummary?.sleep_quality && (
                                         <p className="text-green-600 text-[10px] font-medium flex items-center mt-1">
-                                            {t("quality")} {daySummary.sleepQuality}
+                                            {t("quality")} {daySummary.sleep_quality}
                                         </p>
                                     )}
                                 </div>
@@ -197,7 +196,7 @@ export default function PatientAppPage() {
                                     <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
                                         <Smile className="h-5 w-5" />
                                     </div>
-                                    {daySummary?.moodCompleted ? (
+                                    {daySummary?.mood_rating ? (
                                         <CheckCircle className="h-5 w-5 text-green-500" />
                                     ) : (
                                         <Badge variant="outline" className="bg-amber-100 text-amber-700 text-[10px] border-amber-200 font-bold">
@@ -207,10 +206,10 @@ export default function PatientAppPage() {
                                 </div>
                                 <div className="relative z-10">
                                     <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">{t("mood")}</p>
-                                    {daySummary?.moodCompleted ? (
+                                    {daySummary?.mood_rating ? (
                                         <>
                                             <p className="text-xl font-extrabold text-foreground">
-                                                {daySummary.moodRating === 1 ? "😢" : daySummary.moodRating === 2 ? "☹️" : daySummary.moodRating === 3 ? "😐" : daySummary.moodRating === 4 ? "🙂" : "😄"}
+                                                {daySummary.mood_rating === 1 ? "😢" : daySummary.mood_rating === 2 ? "☹️" : daySummary.mood_rating === 3 ? "😐" : daySummary.mood_rating === 4 ? "🙂" : "😄"}
                                             </p>
                                             <p className="text-primary text-xs font-medium">Registrado</p>
                                         </>
@@ -344,9 +343,12 @@ export default function PatientAppPage() {
                     <section className="p-6 bg-muted/50 rounded-xl hidden md:block border border-border/50">
                         <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">Acompanhado por</p>
                         <div className="flex items-center gap-3">
-                            <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center border-2 border-background shadow-sm text-primary font-bold">
-                                {doctor?.name ? doctor.name.charAt(0) : (nextAppointment?.doctorName ? nextAppointment.doctorName.charAt(0) : "D")}
-                            </div>
+                            <UserAvatar
+                                userId={doctor?.id || nextAppointment?.doctorId}
+                                fallbackName={doctor?.name || nextAppointment?.doctorName || "D"}
+                                hasAvatar={doctor?.hasAvatar}
+                                className="h-10 w-10 border-2 border-background shadow-sm"
+                            />
                             <div>
                                 <p className="text-sm font-bold text-foreground">
                                     {doctor?.name || nextAppointment?.doctorName || "Dr. Responsável"}

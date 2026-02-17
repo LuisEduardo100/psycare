@@ -25,7 +25,19 @@ export class UsersController {
         const { profile_picture, password_hash, ...userData } = user;
 
         const profile = await this.usersService.findPatientProfile(req.user.userId);
-        return { ...userData, hasProfile: !!profile, hasAvatar: !!profile_picture };
+
+        let finalCpf = userData.cpf;
+        if (!finalCpf && profile?.cpf) {
+            finalCpf = profile.cpf;
+        }
+
+        return {
+            ...userData,
+            cpf: finalCpf,
+            hasProfile: !!profile,
+            hasAvatar: !!profile_picture,
+            patientProfileId: profile?.id
+        };
     }
 
     @UseGuards(JwtAuthGuard)
@@ -51,8 +63,8 @@ export class UsersController {
             neighborhood: body.neighborhood,
             city: body.city,
             state: body.state,
-            zipCode: body.zip_code // Frontend sends snake_case probably? let's standardise on what frontend sends.
-            // If frontend uses the form schema, it might send what?
+            zipCode: body.zip_code,
+            cpf: body.cpf
         });
     }
 

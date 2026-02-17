@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min, MinLength, IsArray } from 'class-validator';
 
 export enum ConsultationModality {
     PRESENCIAL = 'PRESENCIAL',
@@ -32,5 +32,8 @@ export class CreateConsultationDto {
     @IsString()
     treatment_plan?: string;
 
-    // Future: ICD10 codes array validation
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    icd10_codes?: string[];
 }
